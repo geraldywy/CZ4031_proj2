@@ -8,6 +8,7 @@ new_query_ref: int | str = None
 old_g: int | str = None
 new_g: int | str = None
 view_graphic_ref: int | str = None
+bct: int | str = None
 
 
 def view_graphic_callback(sender, app_data, user_data):
@@ -31,19 +32,27 @@ def button_callback():
     dpg.set_item_user_data(view_graphic_ref, (old_qep, new_qep))
 
     # place natural lang explanation in primary window (this will be scrollable)
+    # first, clear prev items
+    dpg.delete_item(old_g, children_only=True)
+    dpg.delete_item(new_g, children_only=True)
+
     dpg.add_text(f"Old Query Plan Explanation: \n\n", wrap=500, parent=old_g, color=[255, 255, 0])
     for s, d in old_qep:
         dpg.add_text(s + "\n", wrap=500, parent=old_g)
         if not d:
             continue
-        with dpg.collapsing_header(parent=old_g, label="Misc Info") as x:
-            t = dpg.add_table(label="Misc", parent=x, width=500, header_row=False)
-            dpg.add_table_column(parent=t)
-            dpg.add_table_column(parent=t)
-            for k, v in d.items():
-                with dpg.table_row(parent=t):
-                    dpg.add_text(k)
-                    dpg.add_text(v)
+        with dpg.child_window(parent=old_g) as cw:
+            dpg.bind_item_theme(cw, bct)
+            with dpg.group(parent=cw) as cg:
+                with dpg.collapsing_header(parent=cg, label="Operation Stats") as x:
+                    t = dpg.add_table(label="Operation Stats", parent=x, header_row=False,
+                                      borders_innerV=True, )
+                    dpg.add_table_column(parent=t)
+                    dpg.add_table_column(parent=t)
+                    for k, v in d.items():
+                        with dpg.table_row(parent=t) as r:
+                            dpg.add_text(k, parent=r)
+                            dpg.add_text(v, parent=r, wrap=280)
 
     dpg.add_text(f"New Query Plan Explanation: \n\n", wrap=500, parent=new_g, color=[255, 255, 0])
     for s, d in new_qep:
@@ -51,18 +60,31 @@ def button_callback():
         if not d:
             continue
 
-        with dpg.collapsing_header(parent=new_g, label="Misc Info") as x:
-            t = dpg.add_table(label="Misc", parent=x, width=500, header_row=False)
-            dpg.add_table_column(parent=t)
-            dpg.add_table_column(parent=t)
-            for k, v in d.items():
-                with dpg.table_row(parent=t):
-                    dpg.add_text(k)
-                    dpg.add_text(v)
+        with dpg.group(parent=new_g) as new_gg:
+            cw = dpg.add_child_window(parent=new_gg)
+            dpg.add_text(f"testing: {new_gg} | cw: {cw}", parent=new_gg)
+            # dpg.bind_item_theme(cw, bct)
+            dpg.add_text("test", parent=cw)
+            with dpg.collapsing_header(parent=cw, label="Operation Stats") as x:
+                t = dpg.add_table(label="Operation Stats", parent=x, header_row=False,
+                                  borders_innerV=True, )
+                dpg.add_table_column(parent=t)
+                dpg.add_table_column(parent=t)
+                for k, v in d.items():
+                    with dpg.table_row(parent=t) as r:
+                        dpg.add_text(k, parent=r)
+                        dpg.add_text(v, parent=r, wrap=280)
 
 
 def start():
     dpg.create_context()
+
+    with dpg.theme() as borderless_child_theme:
+        with dpg.theme_component(dpg.mvChildWindow):
+            dpg.add_theme_color(dpg.mvThemeCol_Border, [0, 0, 0, 0])
+        global bct
+        bct = borderless_child_theme
+
     dpg.create_viewport(title='Postgres SQL Query Plan Visualizer', width=1450)
     dpg.setup_dearpygui()
 
@@ -120,6 +142,7 @@ def start():
             global old_g
             with dpg.group(label="Old Query Explanation", width=600) as g:
                 old_g = g
+
             global new_g
             with dpg.group(label="New Query Explanation", width=600) as g:
                 new_g = g

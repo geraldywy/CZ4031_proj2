@@ -78,7 +78,9 @@ class QueryNode:
             if i + 1 < len(self.children):
                 res.append(
                     (
-                        f"Before we can process the {self.node_type} operation, we still have to process {len(self.children) - i - 1}"
+                        f"The above output is then passed into a {self.node_type} operation as an input."
+                        f" However, before we can process the {self.node_type} operation, "
+                        f"we still have to process {len(self.children) - i - 1}"
                         " more intermediate input, discussed immediately below.\n", None)
                 )
 
@@ -103,9 +105,11 @@ class QueryNode:
                " hash table to see if there are any rows it should be joined to.\n", {}
 
     def _explain_ss(self) -> Tuple[str, Dict[str, str]]:
-        return "A sequential scan is performed. A Sequential Scan" \
-               " (or Seq Scan) reads the rows from the table, in order.\nWhen reading from a table, Seq Scans" \
-               " (unlike Index Scans) perform a single read operation (only the table is read).\n", {}
+        return f"A sequential scan is performed on the {self.schema + '.' if self.schema else ''}{self.relation_name}" \
+               " relation.\n", {
+            "op_detail": "A Sequential Scan reads the rows from the table, in order.\nWhen reading from a table,"
+                         " Seq Scans (unlike Index Scans) perform a single read operation (only the table is read).\n",
+        }
 
     def _explain_hash(self) -> Tuple[str, Dict[str, str]]:
         return f"A hash is performed, hashing the query rows for use by its parent operation, " \
