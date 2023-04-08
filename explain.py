@@ -115,12 +115,29 @@ class QueryNode:
 
     def _explain_ss(self) -> Tuple[str, Dict[str, str]]:
         return f"A sequential scan is performed on the {self.schema + '.' if self.schema else ''}{self.relation_name}" \
-               " relation.\n", {
+               " relation.\n", dict({
             "Description": "A Sequential Scan reads the rows from the table, in order.\nWhen reading from a table,"
                            " Seq Scans (unlike Index Scans) perform a single read operation"
                            " (only the table is read).\n",
             "Relation": f"{self.schema + '.' if self.relation_name else ''}"
                         f"{self.schema}{f' as {self.alias}' if self.alias else ''}",
+            "Filter condition": f"{self.filter}",
+            # TODO: If a high proportion of rows are being removed, you may want to investigate whether a (more) selective index could help.
+            # Add a recommendation for the above, since we know the cardinality of each table, we can calculate the %
+            # of filtered rows, and push an appropriate recommendation to build an index for this filter.
+            "Rows removed by filter": f"{self.rows_removed_by_filter}\n\nThe per-loop average number of rows "
+                                      f"removed by the filtering condition."
+        }, **self._format_generic_explain())
+
+    def _explain_hash(self) -> Tuple[str, Dict[str, str]]:
+        return f"A hash is performed, hashing the query rows for use by its parent operation, " \
+               "usually used to perform a JOIN.\n", {}
+
+    def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
+        return f"A {self.node_type} operation is performed.\n", {}
+
+    def _format_generic_explain(self) -> Dict[str, str]:
+        return {
             "Parallel": f"{f'Yes ({self.workers_planned} workers)' if self.parallel_aware else 'No'}",
             "Startup cost": f"{self.startup_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
                             "with the amount of time taken to return the first row.",
@@ -137,20 +154,7 @@ class QueryNode:
             "Actual Rows": f"{self.actual_rows}\n\nThe average number of rows returned by the operation per loop,"
                            f" rounded to the nearest integer.",
             "Actual Loops": f"{self.actual_loops}\n\nThe number of times the operation is executed.",
-            "Filter condition": f"{self.filter}",
-            # TODO: If a high proportion of rows are being removed, you may want to investigate whether a (more) selective index could help.
-            # Add a recommendation for the above, since we know the cardinality of each table, we can calculate the %
-            # of filtered rows, and push an appropriate recommendation to build an index for this filter.
-            "Rows removed by filter": f"{self.rows_removed_by_filter}\n\nThe per-loop average number of rows "
-                                      f"removed by the filtering condition."
         }
-
-    def _explain_hash(self) -> Tuple[str, Dict[str, str]]:
-        return f"A hash is performed, hashing the query rows for use by its parent operation, " \
-               "usually used to perform a JOIN.\n", {}
-
-    def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
-        return f"A {self.node_type} operation is performed.\n", {}
 
 
 # returns the query plan graph node
