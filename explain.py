@@ -132,7 +132,7 @@ class QueryNode:
             "Actual startup time": f"{self.actual_startup_time}\n\nThe amount of time, in milliseconds, it takes to get "
                                    f"the first row out of the operation.",
             "Actual total time": f"{self.actual_total_time}\n\nThe actual amount of time in milliseconds spent on "
-                                 f"this operation and all of its children. It’s a per-loop average, "
+                                 f"this operation and all of its children. It is a per-loop average, "
                                  f"rounded to the nearest thousandth of a millisecond.",
             "Actual Rows": f"{self.actual_rows}\n\nThe average number of rows returned by the operation per loop,"
                            f" rounded to the nearest integer.",
