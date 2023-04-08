@@ -40,6 +40,10 @@ class QueryNode:
     alias: str = None
 
     filter: str = None
+    actual_startup_time = None
+    actual_total_time = None
+    actual_rows = None
+    actual_loops = None
 
     def __init__(self, explain_map):
         self.node_type = explain_map.get("Node Type")
@@ -59,6 +63,11 @@ class QueryNode:
         self.schema = explain_map.get("Schema")
         self.alias = explain_map.get("Alias")
         self.filter = explain_map.get("Filter")
+        self.actual_startup_time = explain_map.get("Actual Startup Time")
+        self.actual_total_time = explain_map.get("Actual Total Time")
+        self.actual_rows = explain_map.get("Actual Rows")
+        self.actual_loops = explain_map.get("Actual Loops")
+        self.rows_removed_by_filter = explain_map.get("Rows Removed by Filter")
 
         self.children = [QueryNode(p) for p in explain_map.get("Plans", [])]
 
@@ -108,7 +117,32 @@ class QueryNode:
         return f"A sequential scan is performed on the {self.schema + '.' if self.schema else ''}{self.relation_name}" \
                " relation.\n", {
             "Description": "A Sequential Scan reads the rows from the table, in order.\nWhen reading from a table,"
-                           " Seq Scans (unlike Index Scans) perform a single read operation (only the table is read).\n",
+                           " Seq Scans (unlike Index Scans) perform a single read operation"
+                           " (only the table is read).\n",
+            "Relation": f"{self.schema + '.' if self.relation_name else ''}"
+                        f"{self.schema}{f' as {self.alias}' if self.alias else ''}",
+            "Parallel": f"{f'Yes ({self.workers_planned} workers)' if self.parallel_aware else 'No'}",
+            "Startup cost": f"{self.startup_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
+                            "with the amount of time taken to return the first row.",
+            "Total cost": f"{self.total_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
+                          "with the amount of time taken to return all rows.",
+            "Planned Rows": f"{self.plan_rows}\n\nNumber of rows estimated to be returned.",
+            "Planned Width": f"{self.plan_width}\n\nAverage number of bytes estimated in a row returned "
+                             f"by the operation.",
+            "Actual startup time": f"{self.actual_startup_time}\n\nThe amount of time, in milliseconds, it takes to get "
+                                   f"the first row out of the operation.",
+            "Actual total time": f"{self.actual_total_time}\n\nThe actual amount of time in milliseconds spent on "
+                                 f"this operation and all of its children. It’s a per-loop average, "
+                                 f"rounded to the nearest thousandth of a millisecond.",
+            "Actual Rows": f"{self.actual_rows}\n\nThe average number of rows returned by the operation per loop,"
+                           f" rounded to the nearest integer.",
+            "Actual Loops": f"{self.actual_loops}\n\nThe number of times the operation is executed.",
+            "Filter condition": f"{self.filter}",
+            # TODO: If a high proportion of rows are being removed, you may want to investigate whether a (more) selective index could help.
+            # Add a recommendation for the above, since we know the cardinality of each table, we can calculate the %
+            # of filtered rows, and push an appropriate recommendation to build an index for this filter.
+            "Rows removed by filter": f"{self.rows_removed_by_filter}\n\nThe per-loop average number of rows "
+                                      f"removed by the filtering condition."
         }
 
     def _explain_hash(self) -> Tuple[str, Dict[str, str]]:

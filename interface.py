@@ -144,7 +144,7 @@ class CollapsibleTable:
                                 callback=self._click)
 
         t = dpg.add_table(label=self.table_label, parent=self.parent, header_row=False, borders_innerV=True,
-                          show=self.active)
+                          show=self.active, borders_innerH=True)
         dpg.add_table_column(parent=t)
         dpg.add_table_column(parent=t)
         for k, v in self.data.items():
