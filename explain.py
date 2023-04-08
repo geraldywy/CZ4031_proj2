@@ -107,8 +107,8 @@ class QueryNode:
     def _explain_ss(self) -> Tuple[str, Dict[str, str]]:
         return f"A sequential scan is performed on the {self.schema + '.' if self.schema else ''}{self.relation_name}" \
                " relation.\n", {
-            "op_detail": "A Sequential Scan reads the rows from the table, in order.\nWhen reading from a table,"
-                         " Seq Scans (unlike Index Scans) perform a single read operation (only the table is read).\n",
+            "Description": "A Sequential Scan reads the rows from the table, in order.\nWhen reading from a table,"
+                           " Seq Scans (unlike Index Scans) perform a single read operation (only the table is read).\n",
         }
 
     def _explain_hash(self) -> Tuple[str, Dict[str, str]]:

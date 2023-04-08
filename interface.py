@@ -8,7 +8,6 @@ new_query_ref: int | str = None
 old_g: int | str = None
 new_g: int | str = None
 view_graphic_ref: int | str = None
-bct: int | str = None
 
 
 def view_graphic_callback(sender, app_data, user_data):
@@ -41,51 +40,21 @@ def button_callback():
         dpg.add_text(s + "\n", wrap=500, parent=old_g)
         if not d:
             continue
-        with dpg.child_window(parent=old_g) as cw:
-            dpg.bind_item_theme(cw, bct)
-            with dpg.group(parent=cw) as cg:
-                with dpg.collapsing_header(parent=cg, label="Operation Stats") as x:
-                    t = dpg.add_table(label="Operation Stats", parent=x, header_row=False,
-                                      borders_innerV=True, )
-                    dpg.add_table_column(parent=t)
-                    dpg.add_table_column(parent=t)
-                    for k, v in d.items():
-                        with dpg.table_row(parent=t) as r:
-                            dpg.add_text(k, parent=r)
-                            dpg.add_text(v, parent=r, wrap=280)
+
+        CollapsibleTable("Operation Details", "Operation Details", old_g, d, False)
 
     dpg.add_text(f"New Query Plan Explanation: \n\n", wrap=500, parent=new_g, color=[255, 255, 0])
     for s, d in new_qep:
         dpg.add_text(s + "\n", wrap=500, parent=new_g)
         if not d:
             continue
-
-        with dpg.group(parent=new_g) as new_gg:
-            cw = dpg.add_child_window(parent=new_gg)
-            dpg.add_text(f"testing: {new_gg} | cw: {cw}", parent=new_gg)
-            # dpg.bind_item_theme(cw, bct)
-            dpg.add_text("test", parent=cw)
-            with dpg.collapsing_header(parent=cw, label="Operation Stats") as x:
-                t = dpg.add_table(label="Operation Stats", parent=x, header_row=False,
-                                  borders_innerV=True, )
-                dpg.add_table_column(parent=t)
-                dpg.add_table_column(parent=t)
-                for k, v in d.items():
-                    with dpg.table_row(parent=t) as r:
-                        dpg.add_text(k, parent=r)
-                        dpg.add_text(v, parent=r, wrap=280)
+        CollapsibleTable("Operation Details", "Operation Details", new_g, d, False)
 
 
 def start():
     dpg.create_context()
 
-    with dpg.theme() as borderless_child_theme:
-        with dpg.theme_component(dpg.mvChildWindow):
-            dpg.add_theme_color(dpg.mvThemeCol_Border, [0, 0, 0, 0])
-        global bct
-        bct = borderless_child_theme
-
-    dpg.create_viewport(title='Postgres SQL Query Plan Visualizer', width=1450)
+    dpg.create_viewport(title='Postgres SQL Query Plan Visualizer', width=1500)
     dpg.setup_dearpygui()
 
     with dpg.window(label="Example Window") as main_window:
@@ -97,7 +66,7 @@ def start():
             dpg.add_text("Postgres SQL Query Execution Plan Diff Visualizer", bullet=True, color=[255, 255, 0])
         dpg.add_spacer(height=30)
         with dpg.group(horizontal=True, horizontal_spacing=100):
-            dpg.add_spacer(width=50)
+            dpg.add_spacer(width=100)
             with dpg.group():
                 dpg.add_text("Old SQL Query")
                 global old_query_ref
@@ -123,12 +92,12 @@ def start():
 
         dpg.add_spacer(height=50)
         with dpg.group(horizontal=True):
-            dpg.add_spacer(width=600)
+            dpg.add_spacer(width=660)
             dpg.add_button(label="Explain Query Plan Diff", callback=button_callback)
 
         dpg.add_spacer(height=50)
         with dpg.group(horizontal=True):
-            dpg.add_spacer(width=580)
+            dpg.add_spacer(width=640)
             global view_graphic_ref
             view_graphic_ref = dpg.add_button(
                 label="View graphical visualization",
@@ -138,7 +107,7 @@ def start():
 
         dpg.add_spacer(height=50)
         with dpg.group(horizontal=True, horizontal_spacing=100):
-            dpg.add_spacer(width=50)
+            dpg.add_spacer(width=30)
             global old_g
             with dpg.group(label="Old Query Explanation", width=600) as g:
                 old_g = g
@@ -153,3 +122,39 @@ def start():
     dpg.start_dearpygui()
 
     dpg.destroy_context()
+
+
+class CollapsibleTable:
+    parent = None
+    data = None
+    active = None
+    table_label = None
+    t = None
+    b = None
+    button_label = None
+
+    def __init__(self, button_label, table_label, parent, data, active=False):
+        self.parent = parent
+        self.data = data
+        self.active = active
+        self.button_label = button_label
+        self.table_label = table_label
+
+        self.b = dpg.add_button(parent=self.parent, label=f"{'V' if self.active else '>'} {self.button_label}",
+                                callback=self._click)
+
+        t = dpg.add_table(label=self.table_label, parent=self.parent, header_row=False, borders_innerV=True,
+                          show=self.active)
+        dpg.add_table_column(parent=t)
+        dpg.add_table_column(parent=t)
+        for k, v in self.data.items():
+            with dpg.table_row(parent=t) as r:
+                dpg.add_text(k, parent=r)
+                dpg.add_text(v, parent=r, wrap=280)
+        dpg.add_spacer(parent=self.parent, height=30)
+        self.t = t
+
+    def _click(self):
+        self.active = not self.active
+        dpg.configure_item(self.t, show=self.active)
+        dpg.configure_item(self.b, label=f"{'V' if self.active else '>'} {self.button_label}")
