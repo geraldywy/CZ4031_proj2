@@ -183,6 +183,9 @@ class QueryNode:
             "Actual Loops": f"{self.actual_loops}\n\nThe number of times the operation is executed.",
         }
 
+    def __str__(self):
+        return self.node_type
+
 
 # returns the query plan graph node
 def get_query_plan(query: str) -> Tuple[List[Tuple[str, Dict[Any, Any]]], None] | Tuple[
