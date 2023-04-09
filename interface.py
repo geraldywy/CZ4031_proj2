@@ -1,6 +1,8 @@
+from math import inf
+
 import dearpygui.dearpygui as dpg
 
-from explain import get_query_plan
+from explain import get_query_plan, QueryNode
 
 old_query_ref: int | str = None
 new_query_ref: int | str = None
@@ -15,23 +17,7 @@ new_b: int | str = None
 def view_graphic_callback(sender, app_data, user_data):
     root_node = user_data
     # place graphical visualization in a separate window pop up
-    with dpg.window(label="Tutorial", width=400, height=400, pos=(320, 70)):
-        with dpg.node_editor() as f:
-            with dpg.node(label="Node 1") as x:
-                k = dpg.add_node_attribute(label="Node A1", parent=x)
-                dpg.add_input_float(label="F1", width=150, parent=k)
-
-                q = dpg.add_node_attribute(label="Node A1", parent=x, attribute_type=dpg.mvNode_Attr_Output)
-                dpg.add_input_float(label="F2", width=150, parent=q)
-
-            with dpg.node(label="Node 2") as x:
-                k = dpg.add_node_attribute(label="Node A3", parent=x)
-                dpg.add_input_float(label="F3", width=150, parent=k)
-
-                h = dpg.add_node_attribute(label="Node A4", parent=x)
-                dpg.add_input_float(label="F4", width=150, parent=h)
-
-            dpg.add_node_link(q, h, parent=f)
+    _build_graph_window(root_node)
 
 
 def button_callback():
@@ -191,3 +177,82 @@ class CollapsibleTable:
         self.active = not self.active
         dpg.configure_item(self.t, show=self.active)
         dpg.configure_item(self.b, label=f"{'V' if self.active else '>'} {self.button_label}")
+
+
+# offset from parent to child: (+300,+/-80)
+def _build_graph_window(root_node: QueryNode):
+    nodes_by_levels = [{None: [root_node]}]  # parent: child
+    i = 0
+    while i < len(nodes_by_levels):
+        last_level = nodes_by_levels[i]
+        nxt_level = {}
+        for k, v in last_level.items():
+            for n in v:
+                t_n = []
+                for child in n.children:
+                    t_n.append(child)
+                if t_n:
+                    nxt_level[n] = sorted(t_n, key=lambda o: 0 if o.parent_relationship == "Outer" else 1)
+        if nxt_level:
+            nodes_by_levels.append(nxt_level)
+
+        i += 1
+
+    pos_map = {}
+    x, y = 0, 0
+    y_spacing = 200
+    x_spacing = 200
+    # initialization step, last column child, populate with coords first
+    for k, l in nodes_by_levels[-1].items():
+        for c in l:
+            pos_map[c] = (x, y)
+            y += y_spacing  # spacing between 2 nodes in same level
+            # Note: We use the convention of outer relation on the top
+
+    for i in range(len(nodes_by_levels) - 1, -1, -1):
+        node_map = nodes_by_levels[i]
+        for k, l in node_map.items():
+            if k is None:
+                break
+            x -= x_spacing
+            # ensure all nodes at this level have assigned pos
+            # there can be a max of 2 children
+            if len(l) > 2:
+                print("More than 2 children graph not supported.")
+                return
+            min_y, max_y = inf, -inf
+            for j, c in enumerate(l):
+                if c not in pos_map:
+                    if j + 1 < len(l):  # can safely assume there is an inner child then
+                        pos_map[c] = (pos_map[l[j + 1]][0], pos_map[l[j + 1]][1] - y_spacing)
+                    else:  # else, it is an inner child
+                        pos_map[c] = (pos_map[l[j + 1]][0], pos_map[l[j + 1]][1] + y_spacing)
+
+                min_y, max_y = min(pos_map[c][1], min_y), max(pos_map[c][1], max_y)
+            if len(l) == 1:
+                y_pos = min_y
+            else:
+                y_pos = int((min_y + max_y) / len(l))
+            pos_map[k] = (x, y_pos)
+
+    # apply appropriate offsets to make root_node be at pos(100,200)
+    offset = (100 - pos_map[root_node][0], 200 - pos_map[root_node][1])
+    for k in pos_map.keys():
+        pos_map[k] = pos_map[k][0] + offset[0], pos_map[k][1] + offset[1]
+
+    graph_ref = {}
+    # place graphical visualization in a separate window pop up
+    with dpg.window(label="Graph Viz", width=1000, height=600, pos=(150, 70)):
+        with dpg.node_editor() as f:
+            for lvl in nodes_by_levels[1:]:
+                for p, l in lvl.items():
+                    if p not in graph_ref:
+                        graph_ref[p] = dpg.add_node(label=p.node_type, pos=pos_map[p], parent=f)
+
+                    for c in l:
+                        out = dpg.add_node_attribute(parent=graph_ref[p], attribute_type=dpg.mvNode_Attr_Output)
+
+                        graph_ref[c] = dpg.add_node(label=c.node_type, pos=pos_map[c], parent=f)
+                        to = dpg.add_node_attribute(parent=graph_ref[c])
+
+                        dpg.add_node_link(out, to, parent=f)
