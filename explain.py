@@ -44,6 +44,8 @@ class QueryNode:
     actual_total_time = None
     actual_rows = None
     actual_loops = None
+    hash_buckets = None
+    workers: List[Dict[str, str]] = None
 
     def __init__(self, explain_map):
         self.node_type = explain_map.get("Node Type")
@@ -68,6 +70,8 @@ class QueryNode:
         self.actual_rows = explain_map.get("Actual Rows")
         self.actual_loops = explain_map.get("Actual Loops")
         self.rows_removed_by_filter = explain_map.get("Rows Removed by Filter")
+        self.hash_buckets = explain_map.get("Hash Buckets")
+        self.workers = explain_map.get("Workers", [])
 
         self.children = [QueryNode(p) for p in explain_map.get("Plans", [])]
 
@@ -102,43 +106,55 @@ class QueryNode:
         return res
 
     def _explain_gather(self) -> Tuple[str, Dict[str, str]]:
-        return f"A Gather operation is performed, combining the output of child nodes," \
-               " which are executed by parallel workers." \
-               "\nGather does not make any guarantee about ordering, unlike Gather Merge, " \
-               "which preserves sort order.\n", {"Test": ":123"}
+        return f"A Gather operation is performed on the output of {self.workers_planned} workers.", dict({
+            "Description": "Gather combines the output of child nodes, which are executed "
+                           "by parallel workers. Gather does not make any guarantee about "
+                           "ordering, unlike Gather Merge, which preserves sort order.",
+            **self._generic_explain_dict()
+        })
 
     def _explain_hj(self) -> Tuple[str, Dict[str, str]]:
-        return f"A hash join is performed. Hash join is an implementation of join in which one of the" \
-               " collections of rows to be joined is hashed on the join keys using a separate 'Hash' node. " \
-               "Postgres then iterates over the other collection of rows, for each one looking it up in the" \
-               " hash table to see if there are any rows it should be joined to.\n", {}
+        return f"A hash join is performed on {self.hash_cond}.", dict({
+            "Description": "Hash join is an implementation of join in which one of the"
+                           " collections of rows to be joined is hashed on the join keys using a separate 'Hash' node. "
+                           "Postgres then iterates over the other collection of rows, for each one looking it up in the"
+                           " hash table to see if there are any rows it should be joined to.\n",
+            "Join type": self.join_type
+        }, **self._generic_explain_dict())
 
     def _explain_ss(self) -> Tuple[str, Dict[str, str]]:
-        return f"A sequential scan is performed on the {self.schema + '.' if self.schema else ''}{self.relation_name}" \
+        return f"A sequential scan is performed on the {self.schema + '.' if self.relation_name else ''}{self.relation_name}" \
                " relation.\n", dict({
             "Description": "A Sequential Scan reads the rows from the table, in order.\nWhen reading from a table,"
                            " Seq Scans (unlike Index Scans) perform a single read operation"
                            " (only the table is read).\n",
-            "Relation": f"{self.schema + '.' if self.relation_name else ''}"
-                        f"{self.schema}{f' as {self.alias}' if self.alias else ''}",
+            "Relation": f"{self.schema + '.' if self.schema else ''}"
+                        f"{self.relation_name}{f' as {self.alias}' if self.alias else ''}",
             "Filter condition": f"{self.filter}",
             # TODO: If a high proportion of rows are being removed, you may want to investigate whether a (more) selective index could help.
             # Add a recommendation for the above, since we know the cardinality of each table, we can calculate the %
             # of filtered rows, and push an appropriate recommendation to build an index for this filter.
             "Rows removed by filter": f"{self.rows_removed_by_filter}\n\nThe per-loop average number of rows "
                                       f"removed by the filtering condition."
-        }, **self._format_generic_explain())
+        }, **self._generic_explain_dict())
 
     def _explain_hash(self) -> Tuple[str, Dict[str, str]]:
-        return f"A hash is performed, hashing the query rows for use by its parent operation, " \
-               "usually used to perform a JOIN.\n", {}
+        return f"A hash is performed on the results of the above operation.\n", dict({
+            "Description": "Hash Node generates a hash table from the records in the input recordset. "
+                           "Hash is used by Hash Join.",
+            "Hash Buckets": f"{self.hash_buckets}\n\nHashed data is assigned to hash buckets. "
+                            "Buckets are doubled until there are enough, so they are always a power of 2."
+        }, **self._generic_explain_dict())
 
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
-        return f"A {self.node_type} operation is performed.\n", {}
+        return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
 
-    def _format_generic_explain(self) -> Dict[str, str]:
+    def _generic_explain_dict(self) -> Dict[str, str]:
+        parallelStr = "Yes" if self.parallel_aware else "No"
+        if len(self.workers):
+            parallelStr += f" ({len(self.workers)} workers)"
         return {
-            "Parallel": f"{f'Yes ({self.workers_planned} workers)' if self.parallel_aware else 'No'}",
+            "Parallel": parallelStr,
             "Startup cost": f"{self.startup_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
                             "with the amount of time taken to return the first row.",
             "Total cost": f"{self.total_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
