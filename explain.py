@@ -159,11 +159,11 @@ class QueryNode:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
 
     def _generic_explain_dict(self) -> Dict[str, str]:
-        parallelStr = "Yes" if self.parallel_aware else "No"
+        parallel_str = "Yes" if self.parallel_aware else "No"
         if len(self.workers):
-            parallelStr += f" ({len(self.workers)} workers)"
+            parallel_str += f" ({len(self.workers)} workers)"
         return {
-            "Parallel": parallelStr,
+            "Parallel": parallel_str,
             "Startup cost": f"{self.startup_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
                             "with the amount of time taken to return the first row.",
             "Total cost": f"{self.total_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
