@@ -7,14 +7,31 @@ new_query_ref: int | str = None
 
 old_g: int | str = None
 new_g: int | str = None
-view_graphic_ref: int | str = None
+labels: int | str = None
+old_b: int | str = None
+new_b: int | str = None
 
 
 def view_graphic_callback(sender, app_data, user_data):
-    old_qep, new_qep = user_data
+    root_node = user_data
     # place graphical visualization in a separate window pop up
-    with dpg.window(label="query diff", width=700, height=600, pos=(320, 70)):
-        dpg.add_text(str(old_qep) + "\n\n\n" + str(new_qep), wrap=550)
+    with dpg.window(label="Tutorial", width=400, height=400, pos=(320, 70)):
+        with dpg.node_editor() as f:
+            with dpg.node(label="Node 1") as x:
+                k = dpg.add_node_attribute(label="Node A1", parent=x)
+                dpg.add_input_float(label="F1", width=150, parent=k)
+
+                q = dpg.add_node_attribute(label="Node A1", parent=x, attribute_type=dpg.mvNode_Attr_Output)
+                dpg.add_input_float(label="F2", width=150, parent=q)
+
+            with dpg.node(label="Node 2") as x:
+                k = dpg.add_node_attribute(label="Node A3", parent=x)
+                dpg.add_input_float(label="F3", width=150, parent=k)
+
+                h = dpg.add_node_attribute(label="Node A4", parent=x)
+                dpg.add_input_float(label="F4", width=150, parent=h)
+
+            dpg.add_node_link(q, h, parent=f)
 
 
 def button_callback():
@@ -24,18 +41,19 @@ def button_callback():
     old_q = dpg.get_value(old_query_ref)
     new_q = dpg.get_value(new_query_ref)
     # TODO: enclose this in a try and except and display errors back if any.
-    old_qep = get_query_plan(old_q)
-    new_qep = get_query_plan(new_q)
+    old_qep, old_root_node = get_query_plan(old_q)
+    new_qep, new_root_node = get_query_plan(new_q)
 
-    dpg.configure_item(view_graphic_ref, show=True)
-    dpg.set_item_user_data(view_graphic_ref, (old_qep, new_qep))
-
+    dpg.show_item(labels)
     # place natural lang explanation in primary window (this will be scrollable)
     # first, clear prev items
     dpg.delete_item(old_g, children_only=True)
     dpg.delete_item(new_g, children_only=True)
 
-    dpg.add_text(f"Old Query Plan Explanation: \n\n", wrap=500, parent=old_g, color=[255, 255, 0])
+    dpg.set_item_user_data(old_b, old_root_node)
+    dpg.set_item_user_data(new_b, new_root_node)
+    # dpg.add_spacer(width=50)
+
     for s, d in old_qep:
         dpg.add_text(s + "\n", wrap=500, parent=old_g)
         if not d:
@@ -43,7 +61,6 @@ def button_callback():
 
         CollapsibleTable("Operation Details", "Operation Details", old_g, d, False)
 
-    dpg.add_text(f"New Query Plan Explanation: \n\n", wrap=500, parent=new_g, color=[255, 255, 0])
     for s, d in new_qep:
         dpg.add_text(s + "\n", wrap=500, parent=new_g)
         if not d:
@@ -95,17 +112,33 @@ def start():
             dpg.add_spacer(width=660)
             dpg.add_button(label="Explain Query Plan Diff", callback=button_callback)
 
-        dpg.add_spacer(height=50)
-        with dpg.group(horizontal=True):
-            dpg.add_spacer(width=640)
-            global view_graphic_ref
-            view_graphic_ref = dpg.add_button(
-                label="View graphical visualization",
-                callback=view_graphic_callback,
-                show=False,
-            )
+        with dpg.group(horizontal=True, show=False) as la:
+            global labels
+            labels = la
+            with dpg.group():
+                dpg.add_spacer(height=50)
+                with dpg.group(horizontal=True) as g:
+                    dpg.add_spacer(width=130)
+                    dpg.add_text(f"Old Query Plan Explanation: \n\n", wrap=500, color=[255, 255, 0], parent=g)
+                    global old_b
+                    old_b = dpg.add_button(
+                        label="View old plan graphical visualization",
+                        callback=view_graphic_callback,
+                    )
+                dpg.add_spacer(height=20)
+            dpg.add_spacer(width=75)
+            with dpg.group():
+                dpg.add_spacer(height=50)
+                with dpg.group(horizontal=True) as g:
+                    dpg.add_spacer(width=130)
+                    dpg.add_text(f"New Query Plan Explanation: \n\n", wrap=500, color=[255, 255, 0], parent=g)
+                    global new_b
+                    new_b = dpg.add_button(
+                        label="View new plan graphical visualization",
+                        callback=view_graphic_callback,
+                    )
+                dpg.add_spacer(height=20)
 
-        dpg.add_spacer(height=50)
         with dpg.group(horizontal=True, horizontal_spacing=100):
             dpg.add_spacer(width=30)
             global old_g

@@ -2,29 +2,43 @@ import dearpygui.dearpygui as dpg
 
 dpg.create_context()
 
-with dpg.theme() as borderless_child_theme:
-    with dpg.theme_component(dpg.mvChildWindow):
-        dpg.add_theme_color(dpg.mvThemeCol_Border, [0, 0, 0, 0])
 
-with dpg.window(label="Tutorial", width=800, height=300):
-    with dpg.group(horizontal=True):
-        with dpg.child_window(width=-200):
-            dpg.bind_item_theme(dpg.last_item(), borderless_child_theme)
-            with dpg.group():
-                with dpg.collapsing_header(
-                        label="Collapsing Header (expands beyond group)"):  # this spills over to next horiz group
-                    dpg.add_text(default_value="Some text")
+# callback runs when user attempts to connect attributes
+def link_callback(sender, app_data):
+    # app_data -> (link_id1, link_id2)
+    print(app_data, sender)
+    # dpg.add_node_link(app_data[0], app_data[1], parent=sender)
 
-                with dpg.tree_node(label="Tree Node (expands beyond group)"):
-                    dpg.add_text(default_value="Some text")
 
-        with dpg.group():
-            dpg.add_text(default_value="Next horiz group")
-            dpg.add_text(default_value="Some text")
-            dpg.add_text(default_value="Some text")
-            dpg.add_text(default_value="Some text")
+# callback runs when user attempts to disconnect attributes
+def delink_callback(sender, app_data):
+    # app_data -> link_id
+    dpg.delete_item(app_data)
 
-dpg.create_viewport()
+
+with dpg.window(label="Tutorial", width=400, height=400):
+    a1, a3 = None, None
+    with dpg.node_editor(callback=link_callback, delink_callback=delink_callback) as f:
+        print(f)
+        with dpg.node(label="Node 1") as x:
+            k = dpg.add_node_attribute(label="Node A1", parent=x)
+            dpg.add_input_float(label="F1", width=150, parent=k)
+
+            q = dpg.add_node_attribute(label="Node A1", parent=x, attribute_type=dpg.mvNode_Attr_Output)
+            dpg.add_input_float(label="F2", width=150, parent=q)
+            print("q", q)
+
+        with dpg.node(label="Node 2") as x:
+            k = dpg.add_node_attribute(label="Node A3", parent=x)
+            dpg.add_input_float(label="F3", width=150, parent=k)
+
+            h = dpg.add_node_attribute(label="Node A4", parent=x)
+            dpg.add_input_float(label="F4", width=150, parent=h)
+            print("to", h)
+
+        dpg.add_node_link(q, h, parent=f)
+
+dpg.create_viewport(title='Custom Title', width=800, height=600)
 dpg.setup_dearpygui()
 dpg.show_viewport()
 dpg.start_dearpygui()

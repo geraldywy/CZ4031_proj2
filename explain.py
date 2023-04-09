@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 
 import psycopg2
 
@@ -185,15 +185,17 @@ class QueryNode:
 
 
 # returns the query plan graph node
-def get_query_plan(query: str) -> List[Tuple[str, Dict[str, str]]]:
+def get_query_plan(query: str) -> Tuple[List[Tuple[str, Dict[Any, Any]]], None] | Tuple[
+    List[Tuple[str, Dict[str, str]]], QueryNode]:
     # we do not commit the transaction so analyze does not change db state
     cursor.execute("EXPLAIN (ANALYZE, COSTS, FORMAT JSON, VERBOSE, BUFFERS) " + query.rstrip(";") + ";")
     res = cursor.fetchone()
     if not res or not res[0]:
         print("no plan returned")
-        return [("No plan returned", {})]
+        return [("No plan returned", {})], None
 
-    res, _, _ = QueryNode(res[0][0]["Plan"]).explain()
+    root_node = QueryNode(res[0][0]["Plan"])
+    res, _, _ = root_node.explain()
     for i, t in enumerate(res):
         s, info_d = t
         if i == len(res) - 1:
@@ -201,5 +203,5 @@ def get_query_plan(query: str) -> List[Tuple[str, Dict[str, str]]]:
         else:
             res[i] = f"{i + 1}. {s}", info_d
 
-    return res
+    return res, root_node
     # print(res[0][0])
