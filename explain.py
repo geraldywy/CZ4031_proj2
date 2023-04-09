@@ -47,6 +47,10 @@ class QueryNode:
     hash_buckets = None
     workers: List[Dict[str, str]] = None
 
+    # individual operation cost
+    op_cost: float = None
+    actual_op_cost: float = None
+
     def __init__(self, explain_map):
         self.node_type = explain_map.get("Node Type")
         self.parallel_aware = explain_map.get("Parallel Aware")
@@ -84,10 +88,15 @@ class QueryNode:
 
     # In natural language, explain what this node does.
     # We parse the explanation from bottom up.
-    def explain(self) -> List[Tuple[str, Dict[str, str]]]:
+    def explain(self) -> Tuple[List[Tuple[str, Dict[str, str]]], float, float]:
         res = []
+        self.op_cost = self.total_cost
+        self.actual_op_cost = self.actual_total_time
         for i, child in enumerate(self.children):
-            res.extend(child.explain())
+            l, child_cost, actual_child_cost = child.explain()
+            self.op_cost -= child_cost
+            self.actual_op_cost -= actual_child_cost
+            res.extend(l)
             if i + 1 < len(self.children):
                 res.append(
                     (
@@ -103,7 +112,7 @@ class QueryNode:
             print(self.node_type + " is not supported")
             res.append(self._generic_explain())
 
-        return res
+        return res, self.total_cost, self.actual_total_time
 
     def _explain_gather(self) -> Tuple[str, Dict[str, str]]:
         return f"A Gather operation is performed on the output of {self.workers_planned} workers.", dict({
@@ -158,7 +167,8 @@ class QueryNode:
             "Startup cost": f"{self.startup_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
                             "with the amount of time taken to return the first row.",
             "Total cost": f"{self.total_cost}\n\nNote: This value is unit free. It is merely an estimate correlated "
-                          "with the amount of time taken to return all rows.",
+                          "with the amount of time taken to return all rows and for all its child.",
+            "Operation cost": f"{self.op_cost:.2f}\n\nThe cost estimated for this operation only.",
             "Planned Rows": f"{self.plan_rows}\n\nNumber of rows estimated to be returned.",
             "Planned Width": f"{self.plan_width}\n\nAverage number of bytes estimated in a row returned "
                              f"by the operation.",
@@ -167,6 +177,7 @@ class QueryNode:
             "Actual total time": f"{self.actual_total_time}\n\nThe actual amount of time in milliseconds spent on "
                                  f"this operation and all of its children. It is a per-loop average, "
                                  f"rounded to the nearest thousandth of a millisecond.",
+            "Actual Operation time": f"{self.actual_op_cost:.2f}\n\nThe actual time taken in milliseconds for this operation only.",
             "Actual Rows": f"{self.actual_rows}\n\nThe average number of rows returned by the operation per loop,"
                            f" rounded to the nearest integer.",
             "Actual Loops": f"{self.actual_loops}\n\nThe number of times the operation is executed.",
@@ -182,7 +193,7 @@ def get_query_plan(query: str) -> List[Tuple[str, Dict[str, str]]]:
         print("no plan returned")
         return [("No plan returned", {})]
 
-    res = QueryNode(res[0][0]["Plan"]).explain()
+    res, _, _ = QueryNode(res[0][0]["Plan"]).explain()
     for i, t in enumerate(res):
         s, info_d = t
         if i == len(res) - 1:
