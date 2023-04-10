@@ -84,6 +84,7 @@ class QueryNode:
             "Hash Join": self._explain_hj,
             "Seq Scan": self._explain_ss,
             "Hash": self._explain_hash,
+            "Sorted Merge": self._explain_sorted_merge
         }
 
     # In natural language, explain what this node does.
@@ -158,6 +159,14 @@ class QueryNode:
             "Hash Buckets": f"{self.hash_buckets}\n\nHashed data is assigned to hash buckets. "
                             "Buckets are doubled until there are enough, so they are always a power of 2."
         }, **self._generic_explain_dict())
+
+    def _explain_sorted_merge(self) -> Tuple[str, Dict[str, str]]:
+       return f"A sorted merge join is performed on {self.hash_cond}.", dict({
+            "Description": "Sorted Merge Join is when two lists are sorted on their join keys before being joined together. "
+                           "Postgres then traverse over the two lists in order, finding pairs that have identical join keys"
+                           " and returning them as a new, joined row.\n",
+            "Join type": self.join_type
+        }, **self._generic_explain_dict()) 
 
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
