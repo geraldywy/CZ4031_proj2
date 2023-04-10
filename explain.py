@@ -114,6 +114,10 @@ class QueryNode:
 
         return res, self.total_cost, self.actual_total_time
 
+    # explains itself only, does not parse the tree.
+    def explain_self(self) -> Tuple[str, Dict[str, str]]:
+        return self._explainMapping[self.node_type]()
+
     def _explain_gather(self) -> Tuple[str, Dict[str, str]]:
         return f"A Gather operation is performed on the output of {self.workers_planned} workers.", dict({
             "Description": "Gather combines the output of child nodes, which are executed "
@@ -177,6 +181,7 @@ class QueryNode:
             "Actual total time": f"{self.actual_total_time}\n\nThe actual amount of time in milliseconds spent on "
                                  f"this operation and all of its children. It is a per-loop average, "
                                  f"rounded to the nearest thousandth of a millisecond.",
+            # Actual operation time with subplans and CTE is tricky to calculate.
             "Actual Operation time": f"{self.actual_op_cost:.2f}\n\nThe actual time taken in milliseconds for this operation only.",
             "Actual Rows": f"{self.actual_rows}\n\nThe average number of rows returned by the operation per loop,"
                            f" rounded to the nearest integer.",
@@ -197,7 +202,10 @@ def get_query_plan(query: str) -> Tuple[List[Tuple[str, Dict[Any, Any]]], None] 
         print("no plan returned")
         return [("No plan returned", {})], None
 
-    root_node = QueryNode(res[0][0]["Plan"])
+    plan = res[0][0]["Plan"]
+    sanitize_plan(plan)
+
+    root_node = QueryNode(plan)
     res, _, _ = root_node.explain()
     for i, t in enumerate(res):
         s, info_d = t
@@ -208,3 +216,12 @@ def get_query_plan(query: str) -> Tuple[List[Tuple[str, Dict[Any, Any]]], None] 
 
     return res, root_node
     # print(res[0][0])
+
+
+def sanitize_plan(plan):
+    actual_ttl = plan["Actual Total Time"]
+    for sub_plan in plan.get("Plans", []):
+        if sub_plan["Actual Total Time"] > actual_ttl:
+            sub_plan["Actual Total Time"] = actual_ttl - 0.01
+            sub_plan["Actual Startup Time"] = plan["Actual Startup Time"] - 0.01
+        sanitize_plan(sub_plan)

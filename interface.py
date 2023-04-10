@@ -1,4 +1,5 @@
 from math import inf
+from typing import Dict
 
 import dearpygui.dearpygui as dpg
 
@@ -200,8 +201,8 @@ def _build_graph_window(root_node: QueryNode):
 
     pos_map = {}
     x, y = 0, 0
-    y_spacing = 200
-    x_spacing = 200
+    y_spacing = 250
+    x_spacing = 250
     # initialization step, last column child, populate with coords first
     for k, l in nodes_by_levels[-1].items():
         for c in l:
@@ -241,8 +242,12 @@ def _build_graph_window(root_node: QueryNode):
         pos_map[k] = pos_map[k][0] + offset[0], pos_map[k][1] + offset[1]
 
     graph_ref = {}
+    added_parent = False
     # place graphical visualization in a separate window pop up
-    with dpg.window(label="Graph Viz", width=1000, height=600, pos=(150, 70)):
+    with dpg.window(label="Graph Viz", width=1250, height=600, pos=(150, 70)):
+        with dpg.group():
+            dpg.add_text("Click and drag nodes to rearrange them.")
+            dpg.add_text("To reposition the camera, hold down left click and move mouse to corner of window.")
         with dpg.node_editor() as f:
             for lvl in nodes_by_levels[1:]:
                 for p, l in lvl.items():
@@ -251,8 +256,18 @@ def _build_graph_window(root_node: QueryNode):
 
                     for c in l:
                         out = dpg.add_node_attribute(parent=graph_ref[p], attribute_type=dpg.mvNode_Attr_Output)
+                        if not added_parent:
+                            added_parent = True
+                            s, d = p.explain_self()
+                            dpg.add_text(summarise(s, d), parent=out, wrap=200)
 
                         graph_ref[c] = dpg.add_node(label=c.node_type, pos=pos_map[c], parent=f)
                         to = dpg.add_node_attribute(parent=graph_ref[c])
 
                         dpg.add_node_link(out, to, parent=f)
+                        s, d = c.explain_self()
+                        dpg.add_text(summarise(s, d), parent=to, wrap=200)
+
+
+def summarise(s: str, d: Dict[str, str]) -> str:
+    return d['Actual Operation time']
