@@ -31,6 +31,10 @@ def button_callback():
     old_qep, old_root_node = get_query_plan(old_q)
     new_qep, new_root_node = get_query_plan(new_q)
 
+    # TODO: implement insight of whole tree, identify costliest and slowest operation
+    # old_root_node.get_plan_insight()
+    # new_root_node.get_plan_insight()
+
     dpg.show_item(labels)
     # place natural lang explanation in primary window (this will be scrollable)
     # first, clear prev items
@@ -41,18 +45,21 @@ def button_callback():
     dpg.set_item_user_data(new_b, new_root_node)
     # dpg.add_spacer(width=50)
 
-    for s, d in old_qep:
+    for s, d, node in old_qep:
         dpg.add_text(s + "\n", wrap=500, parent=old_g)
         if not d:
             continue
 
         CollapsibleTable("Operation Details", "Operation Details", old_g, d, False)
+        CollapsibleTable("Smart Insights", "Smart Insights", old_g, node.get_node_insights(), False)
 
-    for s, d in new_qep:
+    for s, d, node in new_qep:
         dpg.add_text(s + "\n", wrap=500, parent=new_g)
         if not d:
             continue
+
         CollapsibleTable("Operation Details", "Operation Details", new_g, d, False)
+        CollapsibleTable("Smart Insights", "Smart Insights", new_g, node.get_node_insights(), False)
 
 
 def start():
@@ -246,8 +253,11 @@ def _build_graph_window(root_node: QueryNode):
     # place graphical visualization in a separate window pop up
     with dpg.window(label="Graph Viz", width=1250, height=600, pos=(150, 70)):
         with dpg.group():
-            dpg.add_text("Click and drag nodes to rearrange them.")
-            dpg.add_text("To reposition the camera, hold down left click and move mouse to corner of window.")
+            dpg.add_text("Click and drag nodes to rearrange them.", wrap=1000)
+            dpg.add_text("To reposition the camera, hold down left click and move mouse to corner of window.",
+                         wrap=1000, color=[0, 255, 255])
+            dpg.add_text("Note: In the case where there are 2 inputs to a parent, the child input above the "
+                         "other child input is regarded as the outer relation.", wrap=1000)
         with dpg.node_editor() as f:
             for lvl in nodes_by_levels[1:]:
                 for p, l in lvl.items():
@@ -258,13 +268,13 @@ def _build_graph_window(root_node: QueryNode):
                         out = dpg.add_node_attribute(parent=graph_ref[p], attribute_type=dpg.mvNode_Attr_Output)
                         if not added_parent:
                             added_parent = True
-                            s, d = p.explain_self()
+                            s, d, _ = p.explain_self()
                             dpg.add_text(summarise(s, d), parent=out, wrap=200)
                         graph_ref[c] = dpg.add_node(label=c.node_type, pos=pos_map[c], parent=f)
                         to = dpg.add_node_attribute(parent=graph_ref[c])
 
                         dpg.add_node_link(out, to, parent=f)
-                        s, d = c.explain_self()
+                        s, d, _ = c.explain_self()
                         dpg.add_text(summarise(s, d), parent=to, wrap=200)
 
 

@@ -50,8 +50,10 @@ class QueryNode:
     # individual operation cost
     op_cost: float = None
     actual_op_cost: float = None
+    plan_total_cost: float = None
+    plan_total_time: float = None
 
-    def __init__(self, explain_map):
+    def __init__(self, explain_map, plan_total_cost=None, plan_total_time=None):
         self.node_type = explain_map.get("Node Type")
         self.parallel_aware = explain_map.get("Parallel Aware")
         self.startup_cost = explain_map.get("Startup Cost")
@@ -71,13 +73,19 @@ class QueryNode:
         self.filter = explain_map.get("Filter")
         self.actual_startup_time = explain_map.get("Actual Startup Time")
         self.actual_total_time = explain_map.get("Actual Total Time")
-        self.actual_rows = explain_map.get("Actual Rows")
+        self.actual_rows = explain_map.get("Actual Rows", 0)
         self.actual_loops = explain_map.get("Actual Loops")
-        self.rows_removed_by_filter = explain_map.get("Rows Removed by Filter")
+        self.rows_removed_by_filter = explain_map.get("Rows Removed by Filter", 0)
         self.hash_buckets = explain_map.get("Hash Buckets")
         self.workers = explain_map.get("Workers", [])
 
-        self.children = [QueryNode(p) for p in explain_map.get("Plans", [])]
+        if not plan_total_cost and not plan_total_time:
+            plan_total_cost = self.op_cost
+            plan_total_time = self.actual_total_time
+        self.plan_total_cost = plan_total_cost
+        self.plan_total_time = plan_total_time
+
+        self.children = [QueryNode(p, plan_total_cost, plan_total_time) for p in explain_map.get("Plans", [])]
 
         self._explainMapping = {
             "Gather": self._explain_gather,
@@ -88,7 +96,7 @@ class QueryNode:
 
     # In natural language, explain what this node does.
     # We parse the explanation from bottom up.
-    def explain(self) -> Tuple[List[Tuple[str, Dict[str, str]]], float, float]:
+    def explain(self) -> Tuple[List[Tuple[str, Dict[str, str], Any]], float, float]:
         res = []
         self.op_cost = self.total_cost
         self.actual_op_cost = self.actual_total_time
@@ -103,20 +111,75 @@ class QueryNode:
                         f"The above output is then passed into a {self.node_type} operation as an input."
                         f" However, before we can process the {self.node_type} operation, "
                         f"we still have to process {len(self.children) - i - 1}"
-                        " more intermediate input, discussed immediately below.\n", None)
+                        " more intermediate input, discussed immediately below.\n", None, None)
                 )
 
-        if self.node_type in self._explainMapping:
-            res.append(self._explainMapping[self.node_type]())
-        else:
+        if self.node_type not in self._explainMapping:
             print(self.node_type + " is not supported")
-            res.append(self._generic_explain())
+        res.append(self.explain_self())
 
         return res, self.total_cost, self.actual_total_time
 
     # explains itself only, does not parse the tree.
-    def explain_self(self) -> Tuple[str, Dict[str, str]]:
-        return self._explainMapping[self.node_type]()
+    def explain_self(self) -> Tuple[str, Dict[str, str], Any]:
+        exp = self._explainMapping.get(self.node_type, self._generic_explain)()
+        return exp[0], exp[1], self
+
+    # analyze itself to get insights for the user
+    # potential insights can include:
+    # 1. Index scan more appropriate than a seq scan if filter
+    #  condition removes large % of rows, recc to build an index
+    # 2. Quality of estimation for plan rows vs actual rows
+    # 3. % of time spent on this operation alone
+    # 4. Whether this operation is slow. > 5ms (Slow), > 10ms (Very Slow)
+    # 5. Estimated cost is high or not.
+    def get_node_insights(self) -> Dict[str, str]:
+        if not self.actual_op_cost:
+            self.explain()
+
+        insights = {}  # label: Description
+
+        # Checking potential scan optimisation
+        if "scan" in self.node_type.lower() and self.filter:
+            ttl_rows = self.actual_rows + self.rows_removed_by_filter
+            perc_removed = self.rows_removed_by_filter / ttl_rows * 100
+            if perc_removed > 70:
+                if self.node_type == "Seq Scan":
+                    insights[
+                        "Filter Optimisation"] = f"{perc_removed:.2f}% of rows removed by filter condition.\n\n" \
+                                                 f"Consider building an index on the filter condition as an " \
+                                                 f"index scan might perform better."
+                if self.node_type == "Index Scan":
+                    insights[
+                        "Filter Optimisation"] = f"{perc_removed:.2f}% of rows removed by filter condition.\n\n" \
+                                                 f"Consider building indexes on the attributes in the filter " \
+                                                 f"condition as an index only scan might perform better."
+
+        # checking quality of row estimation
+        est_rows_accuracy = abs(self.plan_rows - self.actual_rows) / max(1, self.actual_rows)
+        if est_rows_accuracy < 0.5:
+            insights["Row Estimation Quality"] = "Poor row estimation accuracy."
+        elif est_rows_accuracy < 0.8:
+            insights["Row Estimation Quality"] = "Decent row estimation accuracy."
+        else:
+            insights["Row Estimation Quality"] = "Good row estimation accuracy."
+
+        # 3. % of time spent on operation
+        insights["Operation Percentage Time Spent"] = f"{self.actual_op_cost / self.plan_total_time * 100:.2f}%"
+
+        # 4. whether this op is slow
+        if 5 < self.actual_op_cost < 10:
+            insights["Raw Speed"] = f"{self.actual_op_cost}ms.\n\nOperation is slow."
+        elif self.actual_op_cost >= 10:
+            insights["Raw Speed"] = f"{self.actual_op_cost}ms.\n\nOperation is very slow."
+
+        # 5. estimated cost is high or low
+        if 3000 < self.op_cost < 10000:
+            insights["Estimated cost"] = f"{self.op_cost}.\n\nEstimated cost of operation is high."
+        elif self.op_cost >= 10000:
+            insights["Estimated cost"] = f"{self.op_cost}.\n\nEstimated cost of operation is very high."
+
+        return insights
 
     def _explain_gather(self) -> Tuple[str, Dict[str, str]]:
         return f"A Gather operation is performed on the output of {self.workers_planned} workers.", dict({
@@ -193,14 +256,14 @@ class QueryNode:
 
 
 # returns the query plan graph node
-def get_query_plan(query: str) -> Tuple[List[Tuple[str, Dict[Any, Any]]], None] | Tuple[
-    List[Tuple[str, Dict[str, str]]], QueryNode]:
+def get_query_plan(query: str) -> Tuple[List[Tuple[str, Dict[Any, Any], Any]], None] | Tuple[
+    List[Tuple[str, Dict[str, str], Any]], QueryNode]:
     # we do not commit the transaction so analyze does not change db state
     cursor.execute("EXPLAIN (ANALYZE, COSTS, FORMAT JSON, VERBOSE, BUFFERS) " + query.rstrip(";") + ";")
     res = cursor.fetchone()
     if not res or not res[0]:
         print("no plan returned")
-        return [("No plan returned", {})], None
+        return [("No plan returned", {}, None)], None
 
     plan = res[0][0]["Plan"]
     sanitize_plan(plan)
@@ -208,14 +271,13 @@ def get_query_plan(query: str) -> Tuple[List[Tuple[str, Dict[Any, Any]]], None] 
     root_node = QueryNode(plan)
     res, _, _ = root_node.explain()
     for i, t in enumerate(res):
-        s, info_d = t
+        s, info_d, node = t
         if i == len(res) - 1:
-            res[i] = f"{i + 1}. Finally, {s[0].lower()}{s[1:]}", info_d
+            res[i] = f"{i + 1}. Finally, {s[0].lower()}{s[1:]}", info_d, node
         else:
-            res[i] = f"{i + 1}. {s}", info_d
+            res[i] = f"{i + 1}. {s}", info_d, node
 
     return res, root_node
-    # print(res[0][0])
 
 
 def sanitize_plan(plan):
