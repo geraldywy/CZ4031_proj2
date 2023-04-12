@@ -171,7 +171,7 @@ class QueryNode:
 
     def _explain_merge_join(self) -> Tuple[str, Dict[str, str]]:
        return f"A merge join operation is performed on {self.merge_cond}.", dict({
-            "Description": "Merge Join is when two lists are sorted on their join keys before being joined together. "
+            "Description": "Merge Join is when two lists are sorted on their join keys before being joined together.\n"
                            "Postgres then traverse over the two lists in order, finding pairs that have identical join keys"
                            " and returning them as a new, joined row.\n",
             "Join type": self.join_type,
@@ -180,8 +180,8 @@ class QueryNode:
     
     def _explain_sort(self) -> Tuple[str, Dict[str, str]]:
        return f"A sort operation is performed based on {self.sort_key} and is done in {self.sort_space_type}.", dict({
-            "Description": "Sorting is performed as a result of an ORDER BY clause. "
-                           "Sorting is expensive in terms of time and memory. The work_mem setting determines how much memory is given to Postgres per sort. "
+            "Description": "Sorting is performed as a result of an ORDER BY clause.\n"
+                           "Sorting is expensive in terms of time and memory. The work_mem setting determines how much memory is given to Postgres per sort.\n"
                            "If sorting requires more memroy than work_mem, it will be carried out on the disk with slower speed.\n",
             "Join type": self.join_type,
             "Parent Relationship": self.parent_relationship,
