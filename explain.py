@@ -193,15 +193,16 @@ class QueryNode:
         }, **self._generic_explain_dict()) 
     
     def _explain_nl_join(self) -> Tuple[str, Dict[str, str]]:
-       return f"A Nested Loop Join operation is performed on {self.nl_cond}.", dict({
+       return f"A Nested Loop Join operation is performed on {self.join_filter}.", dict({
             "Description": "Nested Loop Join is run by iterating through one list, and for every row it contains, its corresponding"
                            "partner is looked up in the other list.\n"
                            "This is effective when one of the lists are very small, resulting in a small number of loops being run\n",
-            "Join type": self.join_type,    
-            "Join Filter": self.join_filter
+            "Join type": self.join_type
         }, **self._generic_explain_dict()) 
     
-    
+    def _explain_
+
+
 
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
