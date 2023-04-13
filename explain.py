@@ -32,6 +32,7 @@ class QueryNode:
     # extras for intermediate nodes
     parent_relationship: str = None
     join_type: str = None
+    join_filter: str = None
     inner_unique: bool = None
     hash_cond: str = None
 
@@ -67,6 +68,7 @@ class QueryNode:
         self.single_copy = explain_map.get("Single Copy")
         self.parent_relationship = explain_map.get("Parent Relationship")
         self.join_type = explain_map.get("Join Type")
+        self.join_filter = explain_map.get("Join Filter")
         self.inner_unique = explain_map.get("Inner Unique")
         self.hash_cond = explain_map.get("Hash Cond")
         self.relation_name = explain_map.get("Relation Name")
@@ -93,7 +95,9 @@ class QueryNode:
             "Seq Scan": self._explain_ss,
             "Hash": self._explain_hash,
             "Merge Join": self._explain_merge_join,
-            "Sort": self._explain_sort
+            "Sort": self._explain_sort,
+            "Nested Loop": self._explain_nl_join
+
         }
 
     # In natural language, explain what this node does.
@@ -188,14 +192,16 @@ class QueryNode:
             "Sort Method": self.sort_method.capitalize()
         }, **self._generic_explain_dict()) 
     
-# Sorts rows into an order, usually as a result of an ORDER BY clause.
+    def _explain_nl_join(self) -> Tuple[str, Dict[str, str]]:
+       return f"A Nested Loop Join operation is performed on {self.join_filter}.", dict({
+            "Description": "Nested Loop Join is run by iterating through one list, and for every row it contains, its corresponding"
+                           "partner is looked up in the other list.\n"
+                           "This is effective when one of the lists are very small, resulting in a small number of loops being run\n",
+            "Join type": self.join_type
+        }, **self._generic_explain_dict()) 
 
-# Sorting lots of rows can be expensive in both time and memory. Your setting of work_mem determines how much memory is available to Postgres per sort. 
-# If a sort requires more memory than work_mem permits, it can be done in a slower way on disk.
 
-# If the sort is by a single column, or multiple columns from the same table, you may be able to avoid it entirely by adding an index with the desired order.
-    
-    
+
 
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
