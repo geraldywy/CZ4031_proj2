@@ -39,6 +39,10 @@ class QueryNode:
     schema: str = None
     alias: str = None
 
+    sort_key: List = None
+    sort_method: str = None
+    sort_space_type: str = None
+    merge_cond: str = None
     filter: str = None
     actual_startup_time = None
     actual_total_time = None
@@ -70,6 +74,10 @@ class QueryNode:
         self.relation_name = explain_map.get("Relation Name")
         self.schema = explain_map.get("Schema")
         self.alias = explain_map.get("Alias")
+        self.sort_key = explain_map.get("Sort Key")
+        self.sort_method = explain_map.get("Sort Method")
+        self.sort_space_type = explain_map.get("Sort Space Type")
+        self.merge_cond = explain_map.get("Merge Cond")
         self.filter = explain_map.get("Filter")
         self.actual_startup_time = explain_map.get("Actual Startup Time")
         self.actual_total_time = explain_map.get("Actual Total Time")
@@ -92,6 +100,8 @@ class QueryNode:
             "Hash Join": self._explain_hj,
             "Seq Scan": self._explain_ss,
             "Hash": self._explain_hash,
+            "Merge Join": self._explain_merge_join,
+            "Sort": self._explain_sort
         }
 
     # In natural language, explain what this node does.
@@ -221,6 +231,34 @@ class QueryNode:
             "Hash Buckets": f"{self.hash_buckets}\n\nHashed data is assigned to hash buckets. "
                             "Buckets are doubled until there are enough, so they are always a power of 2."
         }, **self._generic_explain_dict())
+
+    def _explain_merge_join(self) -> Tuple[str, Dict[str, str]]:
+       return f"A merge join operation is performed on {self.merge_cond}.", dict({
+            "Description": "Merge Join is when two lists are sorted on their join keys before being joined together.\n"
+                           "Postgres then traverse over the two lists in order, finding pairs that have identical join keys"
+                           " and returning them as a new, joined row.\n",
+            "Join type": self.join_type,
+            "Parent Relationship": self.parent_relationship
+        }, **self._generic_explain_dict()) 
+    
+    def _explain_sort(self) -> Tuple[str, Dict[str, str]]:
+       return f"A sort operation is performed based on {self.sort_key} and is done in {self.sort_space_type}.", dict({
+            "Description": "Sorting is performed as a result of an ORDER BY clause.\n"
+                           "Sorting is expensive in terms of time and memory. The work_mem setting determines how much memory is given to Postgres per sort.\n"
+                           "If sorting requires more memroy than work_mem, it will be carried out on the disk with slower speed.\n",
+            "Join type": self.join_type,
+            "Parent Relationship": self.parent_relationship,
+            "Sort Method": self.sort_method.capitalize()
+        }, **self._generic_explain_dict()) 
+    
+# Sorts rows into an order, usually as a result of an ORDER BY clause.
+
+# Sorting lots of rows can be expensive in both time and memory. Your setting of work_mem determines how much memory is available to Postgres per sort. 
+# If a sort requires more memory than work_mem permits, it can be done in a slower way on disk.
+
+# If the sort is by a single column, or multiple columns from the same table, you may be able to avoid it entirely by adding an index with the desired order.
+    
+    
 
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
