@@ -13,6 +13,10 @@ new_g: int | str = None
 labels: int | str = None
 old_b: int | str = None
 new_b: int | str = None
+ch_ref: int | str = None
+cm_ref: int | str = None
+cnl_ref: int | str = None
+cs_ref: int | str = None
 
 
 def view_graphic_callback(sender, app_data, user_data):
@@ -27,9 +31,18 @@ def button_callback():
 
     old_q = dpg.get_value(old_query_ref)
     new_q = dpg.get_value(new_query_ref)
+
     # TODO: enclose this in a try and except and display errors back if any.
-    old_qep, old_root_node = get_query_plan(old_q)
-    new_qep, new_root_node = get_query_plan(new_q)
+    old_qep, old_root_node = get_query_plan(old_q,
+                                            dpg.get_value(ch_ref),
+                                            dpg.get_value(cm_ref),
+                                            dpg.get_value(cnl_ref),
+                                            dpg.get_value(cs_ref))
+    new_qep, new_root_node = get_query_plan(new_q,
+                                            dpg.get_value(ch_ref),
+                                            dpg.get_value(cm_ref),
+                                            dpg.get_value(cnl_ref),
+                                            dpg.get_value(cs_ref))
 
     # TODO: implement insight of whole tree, identify costliest and slowest operation
     # old_root_node.get_plan_insight()
@@ -65,7 +78,7 @@ def button_callback():
 def start():
     dpg.create_context()
 
-    dpg.create_viewport(title='Postgres SQL Query Plan Visualizer', width=1500)
+    dpg.create_viewport(title='Postgres SQL Query Plan Visualizer', width=1600)
     dpg.setup_dearpygui()
 
     with dpg.window(label="Example Window") as main_window:
@@ -73,11 +86,11 @@ def start():
 
         dpg.add_spacer(height=5)
         with dpg.group(horizontal=True):
-            dpg.add_spacer(width=510)
+            dpg.add_spacer(width=520)
             dpg.add_text("Postgres SQL Query Execution Plan Diff Visualizer", bullet=True, color=[255, 255, 0])
         dpg.add_spacer(height=30)
         with dpg.group(horizontal=True, horizontal_spacing=100):
-            dpg.add_spacer(width=100)
+            dpg.add_spacer(width=30)
             with dpg.group():
                 dpg.add_text("Old SQL Query")
                 global old_query_ref
@@ -99,11 +112,18 @@ def start():
                     height=300,
                     hint="Enter an SQL Query",
                 )
-            dpg.add_spacer(width=150)
+
+            with dpg.group():
+                dpg.add_text("Query plan settings")
+                global ch_ref, cm_ref, cnl_ref, cs_ref
+                ch_ref = dpg.add_checkbox(label="Enable hash join", default_value=True)
+                cm_ref = dpg.add_checkbox(label="Enable merge join", default_value=True)
+                cnl_ref = dpg.add_checkbox(label="Enable nested loop join", default_value=True)
+                cs_ref = dpg.add_checkbox(label="Enable sequential scan", default_value=True)
 
         dpg.add_spacer(height=50)
         with dpg.group(horizontal=True):
-            dpg.add_spacer(width=660)
+            dpg.add_spacer(width=600)
             dpg.add_button(label="Explain Query Plan Diff", callback=button_callback)
 
         with dpg.group(horizontal=True, show=False) as la:

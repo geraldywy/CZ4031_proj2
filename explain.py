@@ -301,9 +301,13 @@ class QueryNode:
 
 
 # returns the query plan graph node
-def get_query_plan(query: str) -> Tuple[List[Tuple[str, Dict[Any, Any], Any]], None] | Tuple[
-    List[Tuple[str, Dict[str, str], Any]], QueryNode]:
+def get_query_plan(query: str, enable_hj: bool, enable_mj: bool, enable_nfl: bool, enable_ss: bool) -> Tuple[List[
+    Tuple[str, Dict[Any, Any], Any]], None] | Tuple[List[Tuple[str, Dict[str, str], Any]], QueryNode]:
     # we do not commit the transaction so analyze does not change db state
+    cursor.execute(f"set enable_hashjoin = {'true' if enable_hj else 'false'};")
+    cursor.execute(f"set enable_mergejoin = {'true' if enable_mj else 'false'};")
+    cursor.execute(f"set enable_nestloop = {'true' if enable_nfl else 'false'};")
+    cursor.execute(f"set enable_seqscan = {'true' if enable_ss else 'false'};")
     cursor.execute("EXPLAIN (ANALYZE, COSTS, FORMAT JSON, VERBOSE, BUFFERS) " + query.rstrip(";") + ";")
     res = cursor.fetchone()
     if not res or not res[0]:
