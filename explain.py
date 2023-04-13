@@ -199,8 +199,7 @@ class QueryNode:
                            "This is effective when one of the lists are very small, resulting in a small number of loops being run\n",
             "Join type": self.join_type
         }, **self._generic_explain_dict()) 
-    
-    def _explain_
+
 
 
 
