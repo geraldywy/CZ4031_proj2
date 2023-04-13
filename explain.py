@@ -13,12 +13,12 @@ conn = psycopg2.connect(database=DATABASE,
                         user=USER,
                         password=PASSWORD,
                         port=PORT)
-conn.autocommit = True
+conn.autocommit = False
 cursor = conn.cursor()
 
 
 class QueryNode:
-    children: List = None
+    children: List = Noneq
     node_type: str = None
     parallel_aware: str = None
     startup_cost: float = None
