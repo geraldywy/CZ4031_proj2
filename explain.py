@@ -18,7 +18,7 @@ cursor = conn.cursor()
 
 
 class QueryNode:
-    children: List = Noneq
+    children: List = None
     node_type: str = None
     parallel_aware: str = None
     startup_cost: float = None
@@ -143,6 +143,8 @@ class QueryNode:
     # 3. % of time spent on this operation alone
     # 4. Whether this operation is slow. > 5ms (Slow), > 10ms (Very Slow)
     # 5. Estimated cost is high or not.
+    # 6. If the sort is by a single column, or multiple columns from the same table,
+    # you may be able to avoid it entirely by adding an index with the desired order.
     def get_node_insights(self) -> Dict[str, str]:
         if not self.actual_op_cost:
             self.explain()
@@ -175,7 +177,7 @@ class QueryNode:
             insights["Row Estimation Quality"] = "Good row estimation accuracy."
 
         # 3. % of time spent on operation
-        insights["Operation Percentage Time Spent"] = f"{self.actual_op_cost / self.plan_total_time * 100:.2f}%"
+        insights["Percentage Of Time Spent On Operation"] = f"{self.actual_op_cost / self.plan_total_time * 100:.2f}%"
 
         # 4. whether this op is slow
         if 5 < self.actual_op_cost < 10:
@@ -189,6 +191,22 @@ class QueryNode:
         elif self.op_cost >= 10000:
             insights["Estimated cost"] = f"{self.op_cost}.\n\nEstimated cost of operation is very high."
 
+        # 6. If the sort is by a single column, or multiple columns from the same table,
+        # you may be able to avoid it entirely by adding an index with the desired order.
+        tbl = None
+        same_tbl = True
+        if self.sort_key:
+            for s in self.sort_key:
+                tbl_name = s[:s.rfind(".")]
+                if tbl is not None and tbl != tbl_name:
+                    same_tbl = False
+                    break
+                tbl = tbl_name
+            if self.node_type == "Sort" and len(self.sort_key) >= 1 and (len(self.sort_key) == 1 or same_tbl):
+                insights[
+                    "Potential sort index"] = "The sort is by a single column, or multiple columns from the same table.\n" \
+                                              "You may be able to avoid it entirely by adding an index with the desired" \
+                                              " order."
         return insights
 
     def _explain_gather(self) -> Tuple[str, Dict[str, str]]:
@@ -217,9 +235,6 @@ class QueryNode:
             "Relation": f"{self.schema + '.' if self.schema else ''}"
                         f"{self.relation_name}{f' as {self.alias}' if self.alias else ''}",
             "Filter condition": f"{self.filter}",
-            # TODO: If a high proportion of rows are being removed, you may want to investigate whether a (more) selective index could help.
-            # Add a recommendation for the above, since we know the cardinality of each table, we can calculate the %
-            # of filtered rows, and push an appropriate recommendation to build an index for this filter.
             "Rows removed by filter": f"{self.rows_removed_by_filter}\n\nThe per-loop average number of rows "
                                       f"removed by the filtering condition."
         }, **self._generic_explain_dict())
@@ -233,32 +248,24 @@ class QueryNode:
         }, **self._generic_explain_dict())
 
     def _explain_merge_join(self) -> Tuple[str, Dict[str, str]]:
-       return f"A merge join operation is performed on {self.merge_cond}.", dict({
+        return f"A merge join operation is performed on {self.merge_cond}.", dict({
             "Description": "Merge Join is when two lists are sorted on their join keys before being joined together.\n"
                            "Postgres then traverse over the two lists in order, finding pairs that have identical join keys"
                            " and returning them as a new, joined row.\n",
             "Join type": self.join_type,
             "Parent Relationship": self.parent_relationship
-        }, **self._generic_explain_dict()) 
-    
+        }, **self._generic_explain_dict())
+
     def _explain_sort(self) -> Tuple[str, Dict[str, str]]:
-       return f"A sort operation is performed based on {self.sort_key} and is done in {self.sort_space_type}.", dict({
-            "Description": "Sorting is performed as a result of an ORDER BY clause.\n"
-                           "Sorting is expensive in terms of time and memory. The work_mem setting determines how much memory is given to Postgres per sort.\n"
-                           "If sorting requires more memroy than work_mem, it will be carried out on the disk with slower speed.\n",
-            "Join type": self.join_type,
-            "Parent Relationship": self.parent_relationship,
-            "Sort Method": self.sort_method.capitalize()
-        }, **self._generic_explain_dict()) 
-    
-# Sorts rows into an order, usually as a result of an ORDER BY clause.
-
-# Sorting lots of rows can be expensive in both time and memory. Your setting of work_mem determines how much memory is available to Postgres per sort. 
-# If a sort requires more memory than work_mem permits, it can be done in a slower way on disk.
-
-# If the sort is by a single column, or multiple columns from the same table, you may be able to avoid it entirely by adding an index with the desired order.
-    
-    
+        return f"A sort operation is performed based on {','.join(self.sort_key)} and is done in {self.sort_space_type}.", dict(
+            {
+                "Description": "Sorting is performed as a result of an ORDER BY clause.\n"
+                               "Sorting is expensive in terms of time and memory. The work_mem setting determines how much memory is given to Postgres per sort.\n"
+                               "If sorting requires more memroy than work_mem, it will be carried out on the disk with slower speed.\n",
+                "Join type": self.join_type,
+                "Parent Relationship": self.parent_relationship,
+                "Sort Method": self.sort_method.capitalize()
+            }, **self._generic_explain_dict())
 
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
