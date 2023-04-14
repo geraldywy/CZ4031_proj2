@@ -296,6 +296,7 @@ def _build_graph_window(root_node: QueryNode):
                          wrap=1000, color=[0, 255, 255])
             dpg.add_text("Note: In the case where there are 2 inputs to a parent, the child input above the "
                          "other child input is regarded as the outer relation.", wrap=1000)
+
         with dpg.node_editor() as f:
             for lvl in nodes_by_levels[1:]:
                 for p, l in lvl.items():
@@ -307,14 +308,24 @@ def _build_graph_window(root_node: QueryNode):
                         if not added_parent:
                             added_parent = True
                             s, d, _ = p.explain_self()
-                            dpg.add_text(summarise(s, d), parent=out, wrap=200)
+                            dpg.add_text(summarise(s, d, p), parent=out, wrap=200)
+                            if p is not None and p.costliest_node == p:
+                                dpg.add_text("Costliest!", color=[255, 99, 71], parent=out)
+                            if p is not None and p.slowest_node == p:
+                                dpg.add_text("Slowest!", color=[255, 99, 71], parent=out)
+
                         graph_ref[c] = dpg.add_node(label=c.node_type, pos=pos_map[c], parent=f)
                         to = dpg.add_node_attribute(parent=graph_ref[c])
 
                         dpg.add_node_link(out, to, parent=f)
                         s, d, _ = c.explain_self()
-                        dpg.add_text(summarise(s, d), parent=to, wrap=200)
+                        dpg.add_text(summarise(s, d, c), parent=to, wrap=200)
+
+                        if c is not None and c.costliest_node == c:
+                            dpg.add_text("Costliest!", color=[255, 99, 71], parent=to)
+                        if c is not None and c.slowest_node == c:
+                            dpg.add_text("Slowest!", color=[255, 99, 71], parent=to)
 
 
-def summarise(s: str, d: Dict[str, str]) -> str:
-    return d['Actual Operation time']
+def summarise(s: str, d: Dict[str, str], node: QueryNode) -> str:
+    return f"{d['Actual Operation time']}\n\nEstimated cost: {node.op_cost:.2f}\n"
