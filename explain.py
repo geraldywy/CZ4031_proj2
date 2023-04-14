@@ -57,6 +57,12 @@ class QueryNode:
     plan_total_cost: float = None
     plan_total_time: float = None
 
+    # plan-wide
+    costliest_node = None
+    slowest_node = None
+    planning_time = None
+    execution_time = None
+
     def __init__(self, explain_map, plan_total_cost=None, plan_total_time=None):
         self.node_type = explain_map.get("Node Type")
         self.parallel_aware = explain_map.get("Parallel Aware")
@@ -299,6 +305,17 @@ class QueryNode:
     def __str__(self):
         return self.node_type
 
+    def get_plan_insight(self):
+        if self.costliest_node is None or self.slowest_node is None:
+            return {}
+
+        return {
+            "Slowest Operation": f"{self.slowest_node.node_type} took {self.slowest_node.actual_op_cost:.2f}ms.",
+            "Costliest Operation": f"{self.costliest_node.node_type} was estimated at a cost of {self.costliest_node.op_cost:.2f}.",
+            "Planning Time": f"{self.planning_time}ms",
+            "Plan Execution Time": f"{self.execution_time}ms"
+        }
+
 
 # returns the query plan graph node
 def get_query_plan(query: str, enable_hj: bool, enable_mj: bool, enable_nfl: bool, enable_ss: bool) -> Tuple[List[
@@ -309,22 +326,40 @@ def get_query_plan(query: str, enable_hj: bool, enable_mj: bool, enable_nfl: boo
     cursor.execute(f"set enable_nestloop = {'true' if enable_nfl else 'false'};")
     cursor.execute(f"set enable_seqscan = {'true' if enable_ss else 'false'};")
     cursor.execute("EXPLAIN (ANALYZE, COSTS, FORMAT JSON, VERBOSE, BUFFERS) " + query.rstrip(";") + ";")
-    res = cursor.fetchone()
-    if not res or not res[0]:
+    r = cursor.fetchone()
+    if not r or not r[0]:
         print("no plan returned")
         return [("No plan returned", {}, None)], None
 
-    plan = res[0][0]["Plan"]
+    plan = r[0][0]["Plan"]
     sanitize_plan(plan)
 
     root_node = QueryNode(plan)
     res, _, _ = root_node.explain()
+    # formatting and mark costliest and slowest node in plan
+    costliest = None
+    slowest = None
     for i, t in enumerate(res):
         s, info_d, node = t
         if i == len(res) - 1:
             res[i] = f"{i + 1}. Finally, {s[0].lower()}{s[1:]}", info_d, node
         else:
             res[i] = f"{i + 1}. {s}", info_d, node
+
+        if node is None:
+            continue
+        if costliest is None or node.op_cost > costliest.op_cost:
+            costliest = node
+        if slowest is None or node.actual_op_cost > slowest.actual_op_cost:
+            slowest = node
+
+    root_node.slowest_node = slowest
+    root_node.costliest_node = costliest
+    slowest.slowest_node = slowest
+    costliest.costliest_node = costliest
+
+    root_node.planning_time = r[0][0].get("Planning Time", "NA")
+    root_node.execution_time = r[0][0].get("Execution Time", "NA")
 
     return res, root_node
 

@@ -44,10 +44,6 @@ def button_callback():
                                             dpg.get_value(cnl_ref),
                                             dpg.get_value(cs_ref))
 
-    # TODO: implement insight of whole tree, identify costliest and slowest operation
-    # old_root_node.get_plan_insight()
-    # new_root_node.get_plan_insight()
-
     dpg.show_item(labels)
     # place natural lang explanation in primary window (this will be scrollable)
     # first, clear prev items
@@ -60,19 +56,41 @@ def button_callback():
 
     for s, d, node in old_qep:
         dpg.add_text(s + "\n", wrap=500, parent=old_g)
+        if node is not None and node.costliest_node == node:
+            dpg.add_text("Costliest!", color=[255, 99, 71], parent=old_g)
+        if node is not None and node.slowest_node == node:
+            dpg.add_text("Slowest!", color=[255, 99, 71], parent=old_g)
         if not d:
             continue
 
         CollapsibleTable("Operation Details", "Operation Details", old_g, d, False)
         CollapsibleTable("Smart Insights", "Smart Insights", old_g, node.get_node_insights(), False)
 
+    with dpg.child_window(parent=old_g):
+        dpg.add_spacer(height=10)
+        dpg.add_separator()
+        dpg.add_spacer(height=10)
+    dpg.add_text("Old Plan Summary", wrap=500, parent=old_g, color=[114, 137, 218])
+    CollapsibleTable("Plan Summary", "Plan Summary", old_g, old_root_node.get_plan_insight(), True)
+
     for s, d, node in new_qep:
         dpg.add_text(s + "\n", wrap=500, parent=new_g)
+        if node is not None and node.costliest_node == node:
+            dpg.add_text("Costliest!", color=[255, 99, 71], parent=new_g)
+        if node is not None and node.slowest_node == node:
+            dpg.add_text("Slowest!", color=[255, 99, 71], parent=new_g)
         if not d:
             continue
 
         CollapsibleTable("Operation Details", "Operation Details", new_g, d, False)
         CollapsibleTable("Smart Insights", "Smart Insights", new_g, node.get_node_insights(), False)
+
+    with dpg.child_window(parent=new_g):
+        dpg.add_spacer(height=10)
+        dpg.add_separator()
+        dpg.add_spacer(height=10)
+    dpg.add_text("New Plan Summary", wrap=500, parent=new_g, color=[114, 137, 218])
+    CollapsibleTable("Plan Summary", "Plan Summary", new_g, new_root_node.get_plan_insight(), True)
 
 
 def start():
@@ -86,13 +104,13 @@ def start():
 
         dpg.add_spacer(height=5)
         with dpg.group(horizontal=True):
-            dpg.add_spacer(width=520)
+            dpg.add_spacer(width=490)
             dpg.add_text("Postgres SQL Query Execution Plan Diff Visualizer", bullet=True, color=[255, 255, 0])
         dpg.add_spacer(height=30)
         with dpg.group(horizontal=True, horizontal_spacing=100):
             dpg.add_spacer(width=30)
             with dpg.group():
-                dpg.add_text("Old SQL Query")
+                dpg.add_text("Old SQL Query", color=[0, 255, 127])
                 global old_query_ref
                 old_query_ref = dpg.add_input_text(
                     default_value="SELECT * FROM customer C, orders O WHERE C.c_custkey = O.o_custkey;",
@@ -102,7 +120,7 @@ def start():
                     hint="Enter an SQL Query",
                 )
             with dpg.group():
-                dpg.add_text("New SQL Query")
+                dpg.add_text("New SQL Query", color=[0, 255, 127])
                 global new_query_ref
                 new_query_ref = dpg.add_input_text(
                     default_value="SELECT * FROM customer C, orders O WHERE C.c_custkey = O.o_custkey \n"
@@ -114,7 +132,7 @@ def start():
                 )
 
             with dpg.group():
-                dpg.add_text("Query plan settings")
+                dpg.add_text("Query plan settings", color=[0, 255, 128])
                 global ch_ref, cm_ref, cnl_ref, cs_ref
                 ch_ref = dpg.add_checkbox(label="Enable hash join", default_value=True)
                 cm_ref = dpg.add_checkbox(label="Enable merge join", default_value=True)
