@@ -44,6 +44,7 @@ class QueryNode:
     sort_method: str = None
     sort_space_type: str = None
     merge_cond: str = None
+    index_cond: str = None
     filter: str = None
     actual_startup_time = None
     actual_total_time = None
@@ -78,6 +79,7 @@ class QueryNode:
         self.sort_method = explain_map.get("Sort Method")
         self.sort_space_type = explain_map.get("Sort Space Type")
         self.merge_cond = explain_map.get("Merge Cond")
+        self.index_cond = explain_map.get("Index Cond")
         self.filter = explain_map.get("Filter")
         self.actual_startup_time = explain_map.get("Actual Startup Time")
         self.actual_total_time = explain_map.get("Actual Total Time")
@@ -96,8 +98,8 @@ class QueryNode:
             "Hash": self._explain_hash,
             "Merge Join": self._explain_merge_join,
             "Sort": self._explain_sort,
-            "Nested Loop": self._explain_nl_join
-
+            "Nested Loop": self._explain_nl_join,
+            "Index Only Scan": self._explain_index_only_scan
         }
 
     # In natural language, explain what this node does.
@@ -200,6 +202,16 @@ class QueryNode:
             "Join type": self.join_type
         }, **self._generic_explain_dict()) 
 
+    def _explain_index_only_scan(self) -> Tuple[str, Dict[str, str]]:
+        return f"An index-only scan can retrieve all the necessary data from an index without having to access the table, provided that the required information is available in the index.\n", dict({
+            "Description": "f the query includes a condition that can be satisfied by the index alone, "
+                            "and all the columns needed for the query are included in the index, the database engine can perform an index-only scan to retrieve the data directly from the index.\n"
+                            "This makes it faster than index scan and its performance can be seen in large datasets.\n",
+            "Relation": f"{self.schema + '.' if self.schema else ''}"
+                        f"{self.relation_name}{f' as {self.alias}' if self.alias else ''}",
+            "Filter condition": f"{self.filter}",
+            "Index Condition": f"{self.index_cond}"
+        }, **self._generic_explain_dict()) 
 
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
