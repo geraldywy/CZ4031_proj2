@@ -31,6 +31,8 @@ class QueryNode:
 
     # extras for intermediate nodes
     parent_relationship: str = None
+    scan_direction: str = None
+    index_name: str = None
     join_type: str = None
     join_filter: str = None
     inner_unique: bool = None
@@ -68,6 +70,8 @@ class QueryNode:
         self.workers_planned = explain_map.get("Workers Planned")
         self.single_copy = explain_map.get("Single Copy")
         self.parent_relationship = explain_map.get("Parent Relationship")
+        self.scan_direction = explain_map.get("Scan Direction")
+        self.index_name = explain_map.get("Index Name")
         self.join_type = explain_map.get("Join Type")
         self.join_filter = explain_map.get("Join Filter")
         self.inner_unique = explain_map.get("Inner Unique")
@@ -99,7 +103,8 @@ class QueryNode:
             "Merge Join": self._explain_merge_join,
             "Sort": self._explain_sort,
             "Nested Loop": self._explain_nl_join,
-            "Index Only Scan": self._explain_index_only_scan
+            "Index Only Scan": self._explain_index_only_scan,
+            "Index Scan": self._explain_index_scan
         }
 
     # In natural language, explain what this node does.
@@ -204,7 +209,7 @@ class QueryNode:
 
     def _explain_index_only_scan(self) -> Tuple[str, Dict[str, str]]:
         return f"An index-only scan can retrieve all the necessary data from an index without having to access the table, provided that the required information is available in the index.\n", dict({
-            "Description": "f the query includes a condition that can be satisfied by the index alone, "
+            "Description": "If the query includes a condition that can be satisfied by the index alone, "
                             "and all the columns needed for the query are included in the index, the database engine can perform an index-only scan to retrieve the data directly from the index.\n"
                             "This makes it faster than index scan and its performance can be seen in large datasets.\n",
             "Relation": f"{self.schema + '.' if self.schema else ''}"
@@ -212,6 +217,16 @@ class QueryNode:
             "Filter condition": f"{self.filter}",
             "Index Condition": f"{self.index_cond}"
         }, **self._generic_explain_dict()) 
+    
+    def _explain_index_scan(self) -> Tuple[str, Dict[str, str]]:
+        return f"An index scan requires the accessing of the all the columns of the index to see if it matches the condition\n", dict({
+            "Description": "The process of an index scan involves searching the index for rows that meet a specific condition and then fetching those rows from the table.\n"
+             "This method can be highly efficient if only a small portion of the rows are required and can also be useful for retrieving rows in a specific order.\n"
+             "This two-step process of index scan therefore, makes it slower than sequential scan if all rows are needed and no particular order is required\n",
+            "Scan Direction": f"{self.scan_direction}",
+            "Index Name": f"{self.index_name}",
+            "Index Cond": f"{self.index_cond}"
+        }, **self._generic_explain_dict())  
 
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
