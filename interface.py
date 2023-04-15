@@ -13,6 +13,10 @@ new_g: int | str = None
 labels: int | str = None
 old_b: int | str = None
 new_b: int | str = None
+ch_ref: int | str = None
+cm_ref: int | str = None
+cnl_ref: int | str = None
+cs_ref: int | str = None
 
 
 def view_graphic_callback(sender, app_data, user_data):
@@ -27,9 +31,18 @@ def button_callback():
 
     old_q = dpg.get_value(old_query_ref)
     new_q = dpg.get_value(new_query_ref)
+
     # TODO: enclose this in a try and except and display errors back if any.
-    old_qep, old_root_node = get_query_plan(old_q)
-    new_qep, new_root_node = get_query_plan(new_q)
+    old_qep, old_root_node = get_query_plan(old_q,
+                                            dpg.get_value(ch_ref),
+                                            dpg.get_value(cm_ref),
+                                            dpg.get_value(cnl_ref),
+                                            dpg.get_value(cs_ref))
+    new_qep, new_root_node = get_query_plan(new_q,
+                                            dpg.get_value(ch_ref),
+                                            dpg.get_value(cm_ref),
+                                            dpg.get_value(cnl_ref),
+                                            dpg.get_value(cs_ref))
 
     dpg.show_item(labels)
     # place natural lang explanation in primary window (this will be scrollable)
@@ -41,24 +54,49 @@ def button_callback():
     dpg.set_item_user_data(new_b, new_root_node)
     # dpg.add_spacer(width=50)
 
-    for s, d in old_qep:
+    for s, d, node in old_qep:
         dpg.add_text(s + "\n", wrap=500, parent=old_g)
+        if node is not None and node.costliest_node == node:
+            dpg.add_text("Costliest!", color=[255, 99, 71], parent=old_g)
+        if node is not None and node.slowest_node == node:
+            dpg.add_text("Slowest!", color=[255, 99, 71], parent=old_g)
         if not d:
             continue
 
         CollapsibleTable("Operation Details", "Operation Details", old_g, d, False)
+        CollapsibleTable("Smart Insights", "Smart Insights", old_g, node.get_node_insights(), False)
 
-    for s, d in new_qep:
+    with dpg.child_window(parent=old_g):
+        dpg.add_spacer(height=10)
+        dpg.add_separator()
+        dpg.add_spacer(height=10)
+    dpg.add_text("Old Plan Summary", wrap=500, parent=old_g, color=[114, 137, 218])
+    CollapsibleTable("Plan Summary", "Plan Summary", old_g, old_root_node.get_plan_insight(), True)
+
+    for s, d, node in new_qep:
         dpg.add_text(s + "\n", wrap=500, parent=new_g)
+        if node is not None and node.costliest_node == node:
+            dpg.add_text("Costliest!", color=[255, 99, 71], parent=new_g)
+        if node is not None and node.slowest_node == node:
+            dpg.add_text("Slowest!", color=[255, 99, 71], parent=new_g)
         if not d:
             continue
+
         CollapsibleTable("Operation Details", "Operation Details", new_g, d, False)
+        CollapsibleTable("Smart Insights", "Smart Insights", new_g, node.get_node_insights(), False)
+
+    with dpg.child_window(parent=new_g):
+        dpg.add_spacer(height=10)
+        dpg.add_separator()
+        dpg.add_spacer(height=10)
+    dpg.add_text("New Plan Summary", wrap=500, parent=new_g, color=[114, 137, 218])
+    CollapsibleTable("Plan Summary", "Plan Summary", new_g, new_root_node.get_plan_insight(), True)
 
 
 def start():
     dpg.create_context()
 
-    dpg.create_viewport(title='Postgres SQL Query Plan Visualizer', width=1500)
+    dpg.create_viewport(title='Postgres SQL Query Plan Visualizer', width=1600)
     dpg.setup_dearpygui()
 
     with dpg.window(label="Example Window") as main_window:
@@ -66,13 +104,13 @@ def start():
 
         dpg.add_spacer(height=5)
         with dpg.group(horizontal=True):
-            dpg.add_spacer(width=510)
+            dpg.add_spacer(width=490)
             dpg.add_text("Postgres SQL Query Execution Plan Diff Visualizer", bullet=True, color=[255, 255, 0])
         dpg.add_spacer(height=30)
         with dpg.group(horizontal=True, horizontal_spacing=100):
-            dpg.add_spacer(width=100)
+            dpg.add_spacer(width=30)
             with dpg.group():
-                dpg.add_text("Old SQL Query")
+                dpg.add_text("Old SQL Query", color=[0, 255, 127])
                 global old_query_ref
                 old_query_ref = dpg.add_input_text(
                     default_value="SELECT * FROM customer C, orders O WHERE C.c_custkey = O.o_custkey;",
@@ -82,7 +120,7 @@ def start():
                     hint="Enter an SQL Query",
                 )
             with dpg.group():
-                dpg.add_text("New SQL Query")
+                dpg.add_text("New SQL Query", color=[0, 255, 127])
                 global new_query_ref
                 new_query_ref = dpg.add_input_text(
                     default_value="SELECT * FROM customer C, orders O WHERE C.c_custkey = O.o_custkey \n"
@@ -92,11 +130,18 @@ def start():
                     height=300,
                     hint="Enter an SQL Query",
                 )
-            dpg.add_spacer(width=150)
+
+            with dpg.group():
+                dpg.add_text("Query plan settings", color=[0, 255, 128])
+                global ch_ref, cm_ref, cnl_ref, cs_ref
+                ch_ref = dpg.add_checkbox(label="Enable hash join", default_value=True)
+                cm_ref = dpg.add_checkbox(label="Enable merge join", default_value=True)
+                cnl_ref = dpg.add_checkbox(label="Enable nested loop join", default_value=True)
+                cs_ref = dpg.add_checkbox(label="Enable sequential scan", default_value=True)
 
         dpg.add_spacer(height=50)
         with dpg.group(horizontal=True):
-            dpg.add_spacer(width=660)
+            dpg.add_spacer(width=600)
             dpg.add_button(label="Explain Query Plan Diff", callback=button_callback)
 
         with dpg.group(horizontal=True, show=False) as la:
@@ -246,8 +291,12 @@ def _build_graph_window(root_node: QueryNode):
     # place graphical visualization in a separate window pop up
     with dpg.window(label="Graph Viz", width=1250, height=600, pos=(150, 70)):
         with dpg.group():
-            dpg.add_text("Click and drag nodes to rearrange them.")
-            dpg.add_text("To reposition the camera, hold down left click and move mouse to corner of window.")
+            dpg.add_text("Click and drag nodes to rearrange them.", wrap=1000)
+            dpg.add_text("To reposition the camera, hold down left click and move mouse to corner of window.",
+                         wrap=1000, color=[0, 255, 255])
+            dpg.add_text("Note: In the case where there are 2 inputs to a parent, the child input above the "
+                         "other child input is regarded as the outer relation.", wrap=1000)
+
         with dpg.node_editor() as f:
             for lvl in nodes_by_levels[1:]:
                 for p, l in lvl.items():
@@ -258,15 +307,25 @@ def _build_graph_window(root_node: QueryNode):
                         out = dpg.add_node_attribute(parent=graph_ref[p], attribute_type=dpg.mvNode_Attr_Output)
                         if not added_parent:
                             added_parent = True
-                            s, d = p.explain_self()
-                            dpg.add_text(summarise(s, d), parent=out, wrap=200)
+                            s, d, _ = p.explain_self()
+                            dpg.add_text(summarise(s, d, p), parent=out, wrap=200)
+                            if p is not None and p.costliest_node == p:
+                                dpg.add_text("Costliest!", color=[255, 99, 71], parent=out)
+                            if p is not None and p.slowest_node == p:
+                                dpg.add_text("Slowest!", color=[255, 99, 71], parent=out)
+
                         graph_ref[c] = dpg.add_node(label=c.node_type, pos=pos_map[c], parent=f)
                         to = dpg.add_node_attribute(parent=graph_ref[c])
 
                         dpg.add_node_link(out, to, parent=f)
-                        s, d = c.explain_self()
-                        dpg.add_text(summarise(s, d), parent=to, wrap=200)
+                        s, d, _ = c.explain_self()
+                        dpg.add_text(summarise(s, d, c), parent=to, wrap=200)
+
+                        if c is not None and c.costliest_node == c:
+                            dpg.add_text("Costliest!", color=[255, 99, 71], parent=to)
+                        if c is not None and c.slowest_node == c:
+                            dpg.add_text("Slowest!", color=[255, 99, 71], parent=to)
 
 
-def summarise(s: str, d: Dict[str, str]) -> str:
-    return d['Actual Operation time']
+def summarise(s: str, d: Dict[str, str], node: QueryNode) -> str:
+    return f"{d['Actual Operation time']}\n\nEstimated cost: {node.op_cost:.2f}\n"
