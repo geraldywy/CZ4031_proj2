@@ -283,15 +283,6 @@ class QueryNode:
                 "Parent Relationship": self.parent_relationship,
                 "Sort Method": self.sort_method.capitalize()
             }, **self._generic_explain_dict())
-
-       return f"A sort operation is performed based on {self.sort_key} and is done in {self.sort_space_type}.", dict({
-            "Description": "Sorting is performed as a result of an ORDER BY clause.\n"
-                           "Sorting is expensive in terms of time and memory. The work_mem setting determines how much memory is given to Postgres per sort.\n"
-                           "If sorting requires more memroy than work_mem, it will be carried out on the disk with slower speed.\n",
-            "Join type": self.join_type,
-            "Parent Relationship": self.parent_relationship,
-            "Sort Method": self.sort_method.capitalize()
-        }, **self._generic_explain_dict()) 
     
     def _explain_nl_join(self) -> Tuple[str, Dict[str, str]]:
        return f"A Nested Loop Join operation is performed on {self.join_filter}.", dict({
