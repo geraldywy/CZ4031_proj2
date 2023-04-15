@@ -201,8 +201,6 @@ class QueryNode:
         }, **self._generic_explain_dict()) 
 
 
-
-
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
 
