@@ -2,12 +2,15 @@ from collections import defaultdict, deque
 from typing import List, Dict, Tuple, Any
 
 import psycopg2
+from dotenv import load_dotenv
+import os
 
-DATABASE = "TPC-H"
-HOST = "localhost"
-USER = "postgres"
-PASSWORD = "password"
-PORT = 5432
+load_dotenv()
+DATABASE = os.environ.get("DATABASE")
+HOST = os.environ.get("HOST")
+USER = os.environ.get("USER")
+PASSWORD = os.environ.get("PASSWORD")
+PORT = os.environ.get("PORT")
 
 conn = psycopg2.connect(database=DATABASE,
                         host=HOST,
