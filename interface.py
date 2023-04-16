@@ -3,11 +3,12 @@ from typing import Dict
 
 import dearpygui.dearpygui as dpg
 
-from explain import get_query_plan, QueryNode
+from explain import get_query_plan, QueryNode, get_plan_diff
 
 old_query_ref: int | str = None
 new_query_ref: int | str = None
 
+main_g: int | str = None
 old_g: int | str = None
 new_g: int | str = None
 labels: int | str = None
@@ -29,26 +30,32 @@ def button_callback():
     if old_query_ref is None or new_query_ref is None:
         return
 
+    # first, clear prev items
+    dpg.delete_item(main_g, children_only=True)
+    dpg.delete_item(old_g, children_only=True)
+    dpg.delete_item(new_g, children_only=True)
+
     old_q = dpg.get_value(old_query_ref)
     new_q = dpg.get_value(new_query_ref)
 
-    # TODO: enclose this in a try and except and display errors back if any.
-    old_qep, old_root_node = get_query_plan(old_q,
-                                            dpg.get_value(ch_ref),
-                                            dpg.get_value(cm_ref),
-                                            dpg.get_value(cnl_ref),
-                                            dpg.get_value(cs_ref))
-    new_qep, new_root_node = get_query_plan(new_q,
-                                            dpg.get_value(ch_ref),
-                                            dpg.get_value(cm_ref),
-                                            dpg.get_value(cnl_ref),
-                                            dpg.get_value(cs_ref))
+    try:
+        old_qep, old_root_node = get_query_plan(old_q,
+                                                dpg.get_value(ch_ref),
+                                                dpg.get_value(cm_ref),
+                                                dpg.get_value(cnl_ref),
+                                                dpg.get_value(cs_ref))
+        new_qep, new_root_node = get_query_plan(new_q,
+                                                dpg.get_value(ch_ref),
+                                                dpg.get_value(cm_ref),
+                                                dpg.get_value(cnl_ref),
+                                                dpg.get_value(cs_ref))
+    except Exception as e:
+        print("Runtime exception", e)
+        dpg.add_text(f"Runtime exception: {e}", parent=main_g, color=[255, 10, 10])
+        return
 
     dpg.show_item(labels)
     # place natural lang explanation in primary window (this will be scrollable)
-    # first, clear prev items
-    dpg.delete_item(old_g, children_only=True)
-    dpg.delete_item(new_g, children_only=True)
 
     dpg.set_item_user_data(old_b, old_root_node)
     dpg.set_item_user_data(new_b, new_root_node)
@@ -72,6 +79,20 @@ def button_callback():
         dpg.add_spacer(height=10)
     dpg.add_text("Old Plan Summary", wrap=500, parent=old_g, color=[114, 137, 218])
     CollapsibleTable("Plan Summary", "Plan Summary", old_g, old_root_node.get_plan_insight(), True)
+
+    with dpg.group(parent=main_g) as g:
+        dpg.add_spacer(height=10, parent=g)
+        dpg.add_text("Plan Diff Report!", wrap=500, parent=g, color=[255, 255, 0])
+        dpg.add_spacer(height=20, parent=g)
+        report_diff = get_plan_diff(old_root_node, new_root_node)
+        dpg.add_text("Scan Diffs", wrap=500, parent=g, color=[122, 137, 198])
+        for entry in report_diff["Scans"]:
+            CollapsibleTable(entry["Relation"], entry["Relation"], g, entry, True)
+
+        report_diff = get_plan_diff(old_root_node, new_root_node)
+        dpg.add_text("Join Diffs", wrap=500, parent=g, color=[122, 137, 198])
+        for entry in report_diff["Joins"]:
+            CollapsibleTable(entry["Join condition"], entry["Join condition"], g, entry, True)
 
     for s, d, node in new_qep:
         dpg.add_text(s + "\n", wrap=500, parent=new_g)
@@ -180,6 +201,10 @@ def start():
             global new_g
             with dpg.group(label="New Query Explanation", width=600) as g:
                 new_g = g
+
+        global main_g
+        with dpg.group() as g:
+            main_g = g
 
         dpg.add_spacer(height=100)
 
