@@ -1,3 +1,4 @@
+from collections import defaultdict, deque
 from typing import List, Dict, Tuple, Any
 
 import psycopg2
@@ -313,6 +314,37 @@ class QueryNode:
             "Index Cond": f"{self.index_cond}"
         }, **self._generic_explain_dict())  
 
+    def _explain_nl_join(self) -> Tuple[str, Dict[str, str]]:
+        return f"A Nested Loop Join operation is performed on {self.join_filter}.", dict({
+            "Description": "Nested Loop Join is run by iterating through one list, and for every row it contains, its corresponding"
+                           "partner is looked up in the other list.\n"
+                           "This is effective when one of the lists are very small, resulting in a small number of loops being run\n",
+            "Join type": self.join_type
+        }, **self._generic_explain_dict())
+
+    def _explain_index_only_scan(self) -> Tuple[str, Dict[str, str]]:
+        return f"An index-only scan can retrieve all the necessary data from an index without having to access the table, provided that the required information is available in the index.\n", dict(
+            {
+                "Description": "If the query includes a condition that can be satisfied by the index alone, "
+                               "and all the columns needed for the query are included in the index, the database engine can perform an index-only scan to retrieve the data directly from the index.\n"
+                               "This makes it faster than index scan and its performance can be seen in large datasets.\n",
+                "Relation": f"{self.schema + '.' if self.schema else ''}"
+                            f"{self.relation_name}{f' as {self.alias}' if self.alias else ''}",
+                "Filter condition": f"{self.filter}",
+                "Index Condition": f"{self.index_cond}"
+            }, **self._generic_explain_dict())
+
+    def _explain_index_scan(self) -> Tuple[str, Dict[str, str]]:
+        return f"An index scan requires the accessing of the all the columns of the index to see if it matches the condition\n", dict(
+            {
+                "Description": "The process of an index scan involves searching the index for rows that meet a specific condition and then fetching those rows from the table.\n"
+                               "This method can be highly efficient if only a small portion of the rows are required and can also be useful for retrieving rows in a specific order.\n"
+                               "This two-step process of index scan therefore, makes it slower than sequential scan if all rows are needed and no particular order is required\n",
+                "Scan Direction": f"{self.scan_direction}",
+                "Index Name": f"{self.index_name}",
+                "Index Cond": f"{self.index_cond}"
+            }, **self._generic_explain_dict())
+
     def _generic_explain(self) -> Tuple[str, Dict[str, str]]:
         return f"A {self.node_type} operation is performed.\n", self._generic_explain_dict()
 
@@ -361,12 +393,17 @@ class QueryNode:
 def get_query_plan(query: str, enable_hj: bool, enable_mj: bool, enable_nfl: bool, enable_ss: bool) -> Tuple[List[
     Tuple[str, Dict[Any, Any], Any]], None] | Tuple[List[Tuple[str, Dict[str, str], Any]], QueryNode]:
     # we do not commit the transaction so analyze does not change db state
-    cursor.execute(f"set enable_hashjoin = {'true' if enable_hj else 'false'};")
-    cursor.execute(f"set enable_mergejoin = {'true' if enable_mj else 'false'};")
-    cursor.execute(f"set enable_nestloop = {'true' if enable_nfl else 'false'};")
-    cursor.execute(f"set enable_seqscan = {'true' if enable_ss else 'false'};")
-    cursor.execute("EXPLAIN (ANALYZE, COSTS, FORMAT JSON, VERBOSE, BUFFERS) " + query.rstrip(";") + ";")
-    r = cursor.fetchone()
+    try:
+        cursor.execute(f"set enable_hashjoin = {'true' if enable_hj else 'false'};")
+        cursor.execute(f"set enable_mergejoin = {'true' if enable_mj else 'false'};")
+        cursor.execute(f"set enable_nestloop = {'true' if enable_nfl else 'false'};")
+        cursor.execute(f"set enable_seqscan = {'true' if enable_ss else 'false'};")
+        cursor.execute("EXPLAIN (ANALYZE, COSTS, FORMAT JSON, VERBOSE, BUFFERS) " + query.rstrip(";") + ";")
+        r = cursor.fetchone()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    
     if not r or not r[0]:
         print("no plan returned")
         return [("No plan returned", {}, None)], None
@@ -411,3 +448,79 @@ def sanitize_plan(plan):
             sub_plan["Actual Total Time"] = actual_ttl - 0.01
             sub_plan["Actual Startup Time"] = plan["Actual Startup Time"] - 0.01
         sanitize_plan(sub_plan)
+
+
+# Takes in 2 query node, returns a nested dict describing the diff
+# the outer key is the category of node_type, with a corresponding list of dict describing
+# each diff identified
+def get_plan_diff(old_root, new_root) -> Dict[str, List[Dict[str, str]]]:
+    res = defaultdict(list)
+
+    old_scans = _identify_scans(old_root)
+    new_scans = _identify_scans(new_root)
+    for k, v in old_scans.items():
+        if k in new_scans:
+            tmp = {
+                "Old scan time taken": f"{v.actual_op_cost:.2f}ms",
+                "New scan time taken": f"{new_scans[k].actual_op_cost:.2f}ms",
+                "Relation": k,
+            }
+            if v.node_type != new_scans[k].node_type:
+                tmp[
+                    "Description"] = f"In old plan, a {v.node_type} on {k} was done{f' with filter: {v.filter}' if v.filter else ''}. In the new plan, a {new_scans[k].node_type} on {k} was done{f' with filter: {new_scans[k].filter}' if new_scans[k].filter else ''} instead."
+            else:
+                filter_str = ""
+                if v.filter or new_scans[k].filter:
+                    filter_str = "\nBoth scans were also performed with the same filter condition."
+                if v.filter != new_scans[k].filter:
+                    filter_str = f"\nHowever, the old plan scan was performed with a filtering condition of {v.filter}, " \
+                                 f"while the new plan scan was performed with a filtering condition of {new_scans[k].filter}"
+                tmp["Description"] = f"In both plans, a {v.node_type} scan was performed on {k}." + filter_str
+            res["Scans"].append(tmp)
+
+    old_joins = _identify_joins(old_root)
+    new_joins = _identify_joins(new_root)
+    for k, v in old_joins.items():
+        if k in new_joins:
+            tmp = {
+                "Old join time taken": f"{v.actual_op_cost:.2f}ms",
+                "New join time taken": f"{new_joins[k].actual_op_cost:.2f}ms",
+                "Join condition": k,
+            }
+            if v.node_type != new_joins[k].node_type:
+                tmp[
+                    "Description"] = f"In old plan, a {v.node_type} with join condition {k} was done. In the new plan, a {new_joins[k].node_type} with join condition {k} was done instead."
+            else:
+                tmp["Description"] = f"In both plans, a {v.node_type} was performed with join condition {k}."
+            res["Joins"].append(tmp)
+
+    return res
+
+
+def _identify_scans(root: QueryNode) -> Dict[str, QueryNode]:
+    queue = deque([root])
+
+    scans = {}
+    while queue:
+        top = queue.popleft()
+        if "scan" in top.node_type.lower() and top.relation_name:
+            scans[top.relation_name] = top
+
+        queue.extend(top.children)
+
+    return scans
+
+
+def _identify_joins(root: QueryNode) -> Dict[str, QueryNode]:
+    queue = deque([root])
+
+    joins = {}
+    while queue:
+        top = queue.popleft()
+        join_cond = top.merge_cond or top.hash_cond
+        if "join" in top.node_type.lower() and join_cond:
+            joins[join_cond] = top
+
+        queue.extend(top.children)
+
+    return joins
