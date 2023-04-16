@@ -2,12 +2,15 @@ from collections import defaultdict, deque
 from typing import List, Dict, Tuple, Any
 
 import psycopg2
+from dotenv import load_dotenv
+import os
 
-DATABASE = "TPC-H"
-HOST = "localhost"
-USER = "postgres"
-PASSWORD = "password"
-PORT = 5432
+load_dotenv()
+DATABASE = os.environ.get("DATABASE")
+HOST = os.environ.get("HOST")
+USER = os.environ.get("USER")
+PASSWORD = os.environ.get("PASSWORD")
+PORT = os.environ.get("PORT")
 
 conn = psycopg2.connect(database=DATABASE,
                         host=HOST,
@@ -284,6 +287,35 @@ class QueryNode:
                 "Parent Relationship": self.parent_relationship,
                 "Sort Method": self.sort_method.capitalize()
             }, **self._generic_explain_dict())
+    
+    def _explain_nl_join(self) -> Tuple[str, Dict[str, str]]:
+       return f"A Nested Loop Join operation is performed on {self.join_filter}.", dict({
+            "Description": "Nested Loop Join is run by iterating through one list, and for every row it contains, its corresponding"
+                           "partner is looked up in the other list.\n"
+                           "This is effective when one of the lists are very small, resulting in a small number of loops being run\n",
+            "Join type": self.join_type
+        }, **self._generic_explain_dict()) 
+
+    def _explain_index_only_scan(self) -> Tuple[str, Dict[str, str]]:
+        return f"An index-only scan can retrieve all the necessary data from an index without having to access the table, provided that the required information is available in the index.\n", dict({
+            "Description": "If the query includes a condition that can be satisfied by the index alone, "
+                            "and all the columns needed for the query are included in the index, the database engine can perform an index-only scan to retrieve the data directly from the index.\n"
+                            "This makes it faster than index scan and its performance can be seen in large datasets.\n",
+            "Relation": f"{self.schema + '.' if self.schema else ''}"
+                        f"{self.relation_name}{f' as {self.alias}' if self.alias else ''}",
+            "Filter condition": f"{self.filter}",
+            "Index Condition": f"{self.index_cond}"
+        }, **self._generic_explain_dict()) 
+    
+    def _explain_index_scan(self) -> Tuple[str, Dict[str, str]]:
+        return f"An index scan requires the accessing of the all the columns of the index to see if it matches the condition\n", dict({
+            "Description": "The process of an index scan involves searching the index for rows that meet a specific condition and then fetching those rows from the table.\n"
+             "This method can be highly efficient if only a small portion of the rows are required and can also be useful for retrieving rows in a specific order.\n"
+             "This two-step process of index scan therefore, makes it slower than sequential scan if all rows are needed and no particular order is required\n",
+            "Scan Direction": f"{self.scan_direction}",
+            "Index Name": f"{self.index_name}",
+            "Index Cond": f"{self.index_cond}"
+        }, **self._generic_explain_dict())  
 
     def _explain_nl_join(self) -> Tuple[str, Dict[str, str]]:
         return f"A Nested Loop Join operation is performed on {self.join_filter}.", dict({
